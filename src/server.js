@@ -1,0 +1,55 @@
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+
+const connectDB = require("./config/db");
+const seedAdmin = require("./utils/seedAdmin");
+const { notFound, errorHandler } = require("./middleware/errorHandler");
+
+const productRoutes = require("./routes/productRoutes");
+const orderRoutes = require("./routes/orderRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+
+const app = express();
+
+// CLIENT_URL is the deployed Vercel frontend origin. Also always allow
+// localhost so `npm run dev` on the frontend keeps working against this
+// backend during development.
+const allowedOrigins = [process.env.CLIENT_URL, "http://localhost:5173", "http://127.0.0.1:5173"].filter(
+  Boolean
+);
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS: origin ${origin} is not allowed`));
+    },
+  })
+);
+app.use(express.json());
+
+app.get("/", (req, res) => res.json({ status: "ok", service: "xposters-backend" }));
+app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+
+app.use("/api/products", productRoutes);
+app.use("/api/orders", orderRoutes);
+app.use("/api/admin", adminRoutes);
+
+app.use(notFound);
+app.use(errorHandler);
+
+const PORT = process.env.PORT || 4000;
+
+async function start() {
+  await connectDB();
+  await seedAdmin();
+  app.listen(PORT, () => console.log(`[server] listening on port ${PORT}`));
+}
+
+start().catch((err) => {
+  console.error("[server] failed to start:", err.message);
+  process.exit(1);
+});
+
+module.exports = app;
