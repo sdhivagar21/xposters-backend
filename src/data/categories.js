@@ -8,6 +8,8 @@ const CATEGORIES = [
   { slug: "anime", name: "Anime" },
   { slug: "cartoon", name: "Cartoon" },
   { slug: "motivational", name: "Motivational" },
+  { slug: "sports", name: "Sports" },
+  { slug: "split-posters", name: "Split Posters" },
 ];
 
 const CATEGORY_SLUGS = CATEGORIES.map((c) => c.slug);
