@@ -3,11 +3,42 @@ const { CATEGORY_SLUGS } = require("../data/categories");
 const { uploadBufferToCloudinary, deleteFromCloudinary } = require("../utils/cloudinaryUpload");
 const { serializeProduct } = require("./productController");
 
-// GET /api/admin/products — same data as public list, but unfiltered/unsorted
-// by default so the dashboard can show everything at once.
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 100;
+
+// GET /api/admin/products?category=&q=&page=&limit=
+// Paginated + filterable so the dashboard stays usable with a large catalog.
 async function adminListProducts(req, res) {
-  const products = await Product.find({}).sort({ createdAt: -1 });
-  res.json(products.map(serializeProduct));
+  const { category, q, page, limit } = req.query;
+  const filter = {};
+
+  if (category) {
+    if (!CATEGORY_SLUGS.includes(category)) {
+      return res.status(400).json({ message: `Unknown category: ${category}` });
+    }
+    filter.category = category;
+  }
+
+  if (q && q.trim()) {
+    filter.name = { $regex: q.trim(), $options: "i" };
+  }
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = Math.min(Math.max(Number(limit) || DEFAULT_PAGE_SIZE, 1), MAX_PAGE_SIZE);
+  const skip = (pageNum - 1) * pageSize;
+
+  const [products, total] = await Promise.all([
+    Product.find(filter).sort({ createdAt: -1 }).skip(skip).limit(pageSize),
+    Product.countDocuments(filter),
+  ]);
+
+  res.json({
+    products: products.map(serializeProduct),
+    total,
+    page: pageNum,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  });
 }
 
 // POST /api/admin/products  (multipart/form-data: image file + fields)
