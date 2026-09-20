@@ -1,8 +1,10 @@
 const Order = require("../models/Order");
 const { generateOrderId } = require("../utils/orderId");
+const { sendOrderConfirmationToCustomer, sendNewOrderAlertToOwner } = require("../utils/whatsapp");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\d{10}$/;
+const ORDER_STATUSES = Order.schema.path("status").enumValues;
 
 function serializeOrder(doc) {
   const o = doc.toObject ? doc.toObject() : doc;
@@ -17,7 +19,7 @@ function serializeOrder(doc) {
   };
 }
 
-// POST /api/orders — the "place order" step. No real payment gateway yet;
+// POST /api/orders - the "place order" step. No real payment gateway yet;
 // this is where one would be called before the order is confirmed.
 async function createOrder(req, res) {
   const { customer, items, subtotal } = req.body;
@@ -39,6 +41,11 @@ async function createOrder(req, res) {
   });
 
   res.status(201).json(serializeOrder(order));
+
+  // Fire the WhatsApp notifications after responding, so a slow or failed
+  // message never delays or breaks placing the order for the customer.
+  sendOrderConfirmationToCustomer(order).catch(() => {});
+  sendNewOrderAlertToOwner(order).catch(() => {});
 }
 
 // GET /api/admin/orders
@@ -47,4 +54,20 @@ async function adminListOrders(req, res) {
   res.json(orders.map(serializeOrder));
 }
 
-module.exports = { createOrder, adminListOrders };
+// PATCH /api/admin/orders/:id/status - move an order to a new stage
+// (placed -> processing -> shipped -> delivered, or cancelled).
+async function updateOrderStatus(req, res) {
+  const { status } = req.body;
+  if (!ORDER_STATUSES.includes(status)) {
+    return res.status(400).json({ message: `status must be one of: ${ORDER_STATUSES.join(", ")}` });
+  }
+
+  const order = await Order.findByIdAndUpdate(req.params.id, { status }, { new: true });
+  if (!order) {
+    return res.status(404).json({ message: "Order not found" });
+  }
+
+  res.json(serializeOrder(order));
+}
+
+module.exports = { createOrder, adminListOrders, updateOrderStatus };

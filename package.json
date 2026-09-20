@@ -1,7 +1,7 @@
 {
   "name": "xposters-backend",
   "version": "1.0.0",
-  "description": "XPOSTERS backend API — products, orders, admin auth (Express + MongoDB)",
+  "description": "XPOSTERS backend API - products, orders, admin auth (Express + MongoDB)",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
@@ -19,7 +19,8 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.10.0",
     "multer": "^2.3.0",
-    "streamifier": "^0.1.1"
+    "streamifier": "^0.1.1",
+    "twilio": "^6.1.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
