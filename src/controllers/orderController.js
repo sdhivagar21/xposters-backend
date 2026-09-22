@@ -1,6 +1,6 @@
 const Order = require("../models/Order");
 const { generateOrderId } = require("../utils/orderId");
-const { sendOrderConfirmationToCustomer, sendNewOrderAlertToOwner } = require("../utils/whatsapp");
+const { sendOrderConfirmationToCustomer, sendNewOrderAlertToOwner } = require("../utils/email");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\d{10}$/;
@@ -42,8 +42,8 @@ async function createOrder(req, res) {
 
   res.status(201).json(serializeOrder(order));
 
-  // Fire the WhatsApp notifications after responding, so a slow or failed
-  // message never delays or breaks placing the order for the customer.
+  // Fire the email notifications after responding, so a slow or failed
+  // send never delays or breaks placing the order for the customer.
   sendOrderConfirmationToCustomer(order).catch(() => {});
   sendNewOrderAlertToOwner(order).catch(() => {});
 }
