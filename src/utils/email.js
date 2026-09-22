@@ -12,9 +12,17 @@ const nodemailer = require("nodemailer");
 const { EMAIL_USER, EMAIL_APP_PASSWORD, OWNER_EMAIL } = process.env;
 
 const configured = Boolean(EMAIL_USER && EMAIL_APP_PASSWORD);
+// Using the explicit host/port instead of the "gmail" shorthand, plus
+// family: 4, so this always connects over IPv4. Some hosts (Render
+// included) advertise an IPv6 route to Gmail's SMTP server that isn't
+// actually reachable, which fails with ENETUNREACH/Connection timeout -
+// forcing IPv4 avoids that entirely.
 const transporter = configured
   ? nodemailer.createTransport({
-      service: "gmail",
+      host: "smtp.gmail.com",
+      port: 465,
+      secure: true,
+      family: 4,
       auth: { user: EMAIL_USER, pass: EMAIL_APP_PASSWORD },
     })
   : null;
