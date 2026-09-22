@@ -24,7 +24,14 @@ const productSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-productSchema.index({ category: 1 });
+// Every product list is sorted by createdAt (newest first) and often
+// filtered by category or featured - these compound indexes let MongoDB
+// satisfy the filter AND the sort from the index directly, instead of
+// scanning matches and sorting them in memory. With 1500+ products this is
+// the difference between a fast indexed lookup and a slow full scan.
+productSchema.index({ category: 1, createdAt: -1 });
+productSchema.index({ createdAt: -1 });
+productSchema.index({ featured: 1, createdAt: -1 });
 productSchema.index({ name: "text" });
 
 module.exports = mongoose.model("Product", productSchema);

@@ -7,6 +7,7 @@ require("dns").setDefaultResultOrder("ipv4first");
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const compression = require("compression");
 
 const connectDB = require("./config/db");
 const seedAdmin = require("./utils/seedAdmin");
@@ -33,6 +34,10 @@ app.use(
     },
   })
 );
+// Gzip/brotli-compresses every JSON response before it goes out - product
+// list/section responses are mostly repetitive text (URLs, field names),
+// which compresses very well. Cuts response size a lot for free.
+app.use(compression());
 app.use(express.json());
 
 app.get("/", (req, res) => res.json({ status: "ok", service: "xposters-backend" }));
