@@ -1,3 +1,9 @@
+// Render's network can resolve outbound hosts to an IPv6 address it can't
+// actually route to (seen with Gmail's SMTP server: ENETUNREACH / Connection
+// timeout). Forcing IPv4 first for all DNS lookups avoids that - this has to
+// run before anything else opens a network connection.
+require("dns").setDefaultResultOrder("ipv4first");
+
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
