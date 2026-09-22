@@ -1,31 +1,27 @@
-// XPOSTERS - order notifications via email (Gmail SMTP through Nodemailer).
+// XPOSTERS - order notifications via email, sent through Resend's HTTPS API.
 //
 // Sends an order-confirmation email to the customer and a new-order alert
 // to the store owner whenever an order is placed. See .env.example for the
-// environment variables this needs (EMAIL_USER, EMAIL_APP_PASSWORD, OWNER_EMAIL).
+// environment variables this needs (RESEND_API_KEY, EMAIL_FROM, OWNER_EMAIL).
 //
-// Safe to use before email is set up: if those variables aren't set yet,
-// this quietly skips sending instead of breaking order placement.
+// Uses an HTTPS API instead of raw SMTP because Render's free tier blocks
+// or throttles outbound SMTP connections (port 465/587), which made direct
+// Gmail SMTP time out no matter what. HTTPS (port 443) isn't affected.
+//
+// Safe to use before email is set up: if RESEND_API_KEY isn't set yet, this
+// quietly skips sending instead of breaking order placement.
 
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
-const { EMAIL_USER, EMAIL_APP_PASSWORD, OWNER_EMAIL } = process.env;
+const { RESEND_API_KEY, EMAIL_FROM, OWNER_EMAIL } = process.env;
 
-const configured = Boolean(EMAIL_USER && EMAIL_APP_PASSWORD);
-// Using the explicit host/port instead of the "gmail" shorthand, plus
-// family: 4, so this always connects over IPv4. Some hosts (Render
-// included) advertise an IPv6 route to Gmail's SMTP server that isn't
-// actually reachable, which fails with ENETUNREACH/Connection timeout -
-// forcing IPv4 avoids that entirely.
-const transporter = configured
-  ? nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
-      family: 4,
-      auth: { user: EMAIL_USER, pass: EMAIL_APP_PASSWORD },
-    })
-  : null;
+const configured = Boolean(RESEND_API_KEY);
+const resend = configured ? new Resend(RESEND_API_KEY) : null;
+
+// Falls back to Resend's shared test sender if EMAIL_FROM isn't set. That
+// sender only delivers to the email address on your Resend account until
+// you verify your own domain - see .env.example.
+const FROM_ADDRESS = EMAIL_FROM || "XPOSTERS <onboarding@resend.dev>";
 
 function formatItemsListHtml(items) {
   return items
@@ -39,17 +35,12 @@ function formatItemsListText(items) {
 
 async function sendEmail(to, subject, html, text) {
   if (!configured) {
-    console.warn("[email] Skipped - set EMAIL_USER / EMAIL_APP_PASSWORD to enable.");
+    console.warn("[email] Skipped - set RESEND_API_KEY to enable.");
     return;
   }
   try {
-    await transporter.sendMail({
-      from: `"XPOSTERS" <${EMAIL_USER}>`,
-      to,
-      subject,
-      html,
-      text,
-    });
+    const { error } = await resend.emails.send({ from: FROM_ADDRESS, to, subject, html, text });
+    if (error) throw new Error(error.message || JSON.stringify(error));
   } catch (err) {
     console.error(`[email] Failed to send to ${to}:`, err.message);
   }
