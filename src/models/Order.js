@@ -6,6 +6,18 @@ const orderItemSchema = new mongoose.Schema(
     name: { type: String, required: true },
     price: { type: Number, required: true },
     image: { type: String },
+    // Print size slug (a5/a4/a3/13x19) - added when per-size pricing
+    // shipped. Optional so older orders placed before this field existed
+    // still validate fine.
+    size: { type: String },
+    // The rest are only set on customizable-poster items (see
+    // orderController.js's createCustomOrder) - left undefined on ordinary
+    // catalog-product items.
+    imagePublicId: { type: String }, // Cloudinary asset id, for the uploaded/linked image
+    imageLink: { type: String }, // the original pasted URL, if that's how it came in
+    width: { type: Number }, // pixel width of the submitted image
+    height: { type: Number }, // pixel height of the submitted image
+    notes: { type: String }, // customer's notes on their custom poster
     qty: { type: Number, required: true, min: 1 },
   },
   { _id: false }

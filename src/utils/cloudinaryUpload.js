@@ -16,6 +16,14 @@ function uploadBufferToCloudinary(buffer, { folder = "xposters" } = {}) {
   });
 }
 
+// Uploads an image from an external URL by having Cloudinary fetch it
+// server-side - used for the "paste an image link" custom-poster flow, so a
+// pasted link gets the same hosting + width/height metadata as an uploaded
+// file, without this server ever downloading the bytes itself.
+function uploadRemoteUrlToCloudinary(url, { folder = "xposters" } = {}) {
+  return cloudinary.uploader.upload(url, { folder, resource_type: "image" });
+}
+
 function deleteFromCloudinary(publicId) {
   if (!publicId) return Promise.resolve();
   return cloudinary.uploader.destroy(publicId).catch(() => {
@@ -23,4 +31,4 @@ function deleteFromCloudinary(publicId) {
   });
 }
 
-module.exports = { uploadBufferToCloudinary, deleteFromCloudinary };
+module.exports = { uploadBufferToCloudinary, uploadRemoteUrlToCloudinary, deleteFromCloudinary };

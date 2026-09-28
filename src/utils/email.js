@@ -1,8 +1,11 @@
 // XPOSTERS - order notifications via email, sent through Resend's HTTPS API.
 //
 // Sends an order-confirmation email to the customer and a new-order alert
-// to the store owner whenever an order is placed. See .env.example for the
-// environment variables this needs (RESEND_API_KEY, EMAIL_FROM, OWNER_EMAIL).
+// to the store owner whenever an order is placed, plus a slightly different
+// owner alert for customizable-poster orders (see sendCustomPosterAlertToOwner
+// below - these are still regular Orders, just with one custom-poster item).
+// See .env.example for the environment variables this needs
+// (RESEND_API_KEY, EMAIL_FROM, OWNER_EMAIL).
 //
 // Uses an HTTPS API instead of raw SMTP because Render's free tier blocks
 // or throttles outbound SMTP connections (port 465/587), which made direct
@@ -93,4 +96,46 @@ async function sendNewOrderAlertToOwner(order) {
   await sendEmail(ownerEmail, subject, html, text);
 }
 
-module.exports = { sendOrderConfirmationToCustomer, sendNewOrderAlertToOwner };
+// order - a full Order document whose single item is the customizable
+// poster (see orderController.js's createCustomOrder). size - the matching
+// entry from data/categories.js, for its label/dimensions.
+async function sendCustomPosterAlertToOwner(order, size) {
+  const ownerEmail = OWNER_EMAIL;
+  if (!ownerEmail) {
+    console.warn("[email] Skipped custom-poster alert - OWNER_EMAIL is not set.");
+    return;
+  }
+  const item = order.items[0];
+  const subject = `New customizable poster order ${order.orderId} - ${size.label} - Rs ${order.subtotal}`;
+  const html = `
+    <p><strong>New customizable poster order ${order.orderId}!</strong></p>
+    <p>Size: ${size.label} (${size.dimensions})<br/>
+    Price: Rs ${order.subtotal}</p>
+    <p><a href="${item.image}">${item.image}</a></p>
+    ${item.width && item.height ? `<p>Image: ${item.width} x ${item.height}px</p>` : ""}
+    <p>Customer: ${order.customer.name}<br/>
+    Phone: ${order.customer.phone}<br/>
+    Email: ${order.customer.email}<br/>
+    Address: ${order.customer.address}</p>
+    ${item.notes ? `<p>Notes: ${item.notes}</p>` : ""}
+  `;
+  const text =
+    `New customizable poster order ${order.orderId}!\n\n` +
+    `Size: ${size.label} (${size.dimensions})\n` +
+    `Price: Rs ${order.subtotal}\n\n` +
+    `Image: ${item.image}\n` +
+    (item.width && item.height ? `Dimensions: ${item.width} x ${item.height}px\n\n` : "\n") +
+    `Customer: ${order.customer.name}\n` +
+    `Phone: ${order.customer.phone}\n` +
+    `Email: ${order.customer.email}\n` +
+    `Address: ${order.customer.address}` +
+    (item.notes ? `\nNotes: ${item.notes}` : "");
+
+  await sendEmail(ownerEmail, subject, html, text);
+}
+
+module.exports = {
+  sendOrderConfirmationToCustomer,
+  sendNewOrderAlertToOwner,
+  sendCustomPosterAlertToOwner,
+};
