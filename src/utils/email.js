@@ -1,9 +1,11 @@
 // XPOSTERS - order notifications via email, sent through Resend's HTTPS API.
 //
 // Sends an order-confirmation email to the customer and a new-order alert
-// to the store owner whenever an order is placed, plus a slightly different
-// owner alert for customizable-poster orders (see sendCustomPosterAlertToOwner
-// below - these are still regular Orders, just with one custom-poster item).
+// to the store owner whenever an order is placed. Customizable-poster
+// orders get their own pair of these (see the two sendCustomPoster*
+// functions below) - still regular Orders under the hood, just with one
+// custom-poster item, so the wording is a little different (no exact
+// product name, mentions the image is being reviewed).
 // See .env.example for the environment variables this needs
 // (RESEND_API_KEY, EMAIL_FROM, OWNER_EMAIL).
 //
@@ -99,6 +101,27 @@ async function sendNewOrderAlertToOwner(order) {
 // order - a full Order document whose single item is the customizable
 // poster (see orderController.js's createCustomOrder). size - the matching
 // entry from data/categories.js, for its label/dimensions.
+async function sendCustomPosterConfirmationToCustomer(order, size) {
+  const subject = `Your XPOSTERS custom poster order ${order.orderId} is in`;
+  const html = `
+    <p>Hi ${order.customer.name}, we've received your customizable poster order <strong>${order.orderId}</strong>!</p>
+    <p>Size: ${size.label} (${size.dimensions})<br/>
+    Price: Rs ${order.subtotal}</p>
+    <p>We're reviewing your image now and will reach out if we need anything else. Otherwise, sit tight - we'll get it printed and shipped to:</p>
+    <p>${order.customer.address}</p>
+    <p>Thanks for shopping with XPOSTERS!</p>
+  `;
+  const text =
+    `Hi ${order.customer.name}, we've received your customizable poster order ${order.orderId}!\n\n` +
+    `Size: ${size.label} (${size.dimensions})\n` +
+    `Price: Rs ${order.subtotal}\n\n` +
+    `We're reviewing your image now and will reach out if we need anything else. Otherwise, sit tight - we'll get it printed and shipped to:\n` +
+    `${order.customer.address}\n\n` +
+    `Thanks for shopping with XPOSTERS!`;
+
+  await sendEmail(order.customer.email, subject, html, text);
+}
+
 async function sendCustomPosterAlertToOwner(order, size) {
   const ownerEmail = OWNER_EMAIL;
   if (!ownerEmail) {
@@ -137,5 +160,6 @@ async function sendCustomPosterAlertToOwner(order, size) {
 module.exports = {
   sendOrderConfirmationToCustomer,
   sendNewOrderAlertToOwner,
+  sendCustomPosterConfirmationToCustomer,
   sendCustomPosterAlertToOwner,
 };

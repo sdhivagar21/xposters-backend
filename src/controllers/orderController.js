@@ -3,6 +3,7 @@ const { generateOrderId } = require("../utils/orderId");
 const {
   sendOrderConfirmationToCustomer,
   sendNewOrderAlertToOwner,
+  sendCustomPosterConfirmationToCustomer,
   sendCustomPosterAlertToOwner,
 } = require("../utils/email");
 const { getSizeBySlug, getMinPixelsForSize } = require("../data/categories");
@@ -126,8 +127,11 @@ async function createCustomOrder(req, res) {
 
   res.status(201).json(serializeOrder(order));
 
-  // Fire the owner alert after responding, same pattern as regular orders -
-  // a slow or failed send should never delay or break the submission.
+  // Fire both notifications after responding, same pattern as regular
+  // orders - a slow or failed send should never delay or break the
+  // submission. The customer gets a confirmation too, same as a regular
+  // order, so they're not left wondering whether it went through.
+  sendCustomPosterConfirmationToCustomer(order, size).catch(() => {});
   sendCustomPosterAlertToOwner(order, size).catch(() => {});
 }
 
