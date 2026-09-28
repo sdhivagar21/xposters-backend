@@ -1,6 +1,17 @@
 const Product = require("../models/Product");
 const { CATEGORIES, CATEGORY_SLUGS } = require("../data/categories");
 
+// Applied to every read-only product endpoint below (not to addReview, which
+// writes data). "public" lets Render/any CDN in front of this cache it too,
+// not just the browser. 60s max-age means most repeat navigation (back
+// button, revisiting a category, the homepage reloading) is served from
+// cache instead of hitting Mongo again; stale-while-revalidate lets the
+// browser show that slightly-stale copy instantly while it quietly
+// refetches in the background, so it never feels slower than before. A
+// changed price/new product shows up for everyone within a minute either
+// way, which is a fine tradeoff for the speed (and bandwidth) this buys.
+const PRODUCT_CACHE_CONTROL = "public, max-age=60, stale-while-revalidate=300";
+
 function serializeProduct(doc) {
   const p = doc.toObject ? doc.toObject() : doc;
   return {
@@ -80,6 +91,7 @@ async function listProducts(req, res) {
     Product.countDocuments(filter),
   ]);
 
+  res.set("Cache-Control", PRODUCT_CACHE_CONTROL);
   res.json({
     products: products.map(serializeCard),
     total,
@@ -95,6 +107,7 @@ async function listFeatured(req, res) {
     .select("-reviews -description")
     .sort({ createdAt: -1 })
     .limit(60);
+  res.set("Cache-Control", PRODUCT_CACHE_CONTROL);
   res.json(products.map(serializeCard));
 }
 
@@ -115,6 +128,7 @@ async function listHomeSections(req, res) {
   for (const group of grouped) {
     sections[group._id] = group.products.map(serializeCard);
   }
+  res.set("Cache-Control", PRODUCT_CACHE_CONTROL);
   res.json(sections);
 }
 
@@ -130,6 +144,7 @@ async function listCollectionsSummary(req, res) {
   for (const group of grouped) {
     summary[group._id] = { count: group.count, cover: group.cover || null };
   }
+  res.set("Cache-Control", PRODUCT_CACHE_CONTROL);
   res.json(summary);
 }
 
@@ -137,6 +152,7 @@ async function listCollectionsSummary(req, res) {
 async function getProduct(req, res) {
   const product = await Product.findById(req.params.id);
   if (!product) return res.status(404).json({ message: "Product not found" });
+  res.set("Cache-Control", PRODUCT_CACHE_CONTROL);
   res.json(serializeProduct(product));
 }
 
@@ -153,6 +169,7 @@ async function getRelated(req, res) {
     .select("-reviews -description")
     .limit(limit);
 
+  res.set("Cache-Control", PRODUCT_CACHE_CONTROL);
   res.json(related.map(serializeCard));
 }
 
