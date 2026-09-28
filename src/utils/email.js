@@ -51,11 +51,25 @@ async function sendEmail(to, subject, html, text) {
   }
 }
 
+// Rendered right before the Total line whenever an order qualified for the
+// bulk-poster discount (order.discountAmount > 0) - blank otherwise, so a
+// non-discounted order's email looks exactly as it always has.
+function formatDiscountLineHtml(order) {
+  if (!order.discountAmount) return "";
+  return `<p>Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}</p>`;
+}
+
+function formatDiscountLineText(order) {
+  if (!order.discountAmount) return "";
+  return `Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}\n`;
+}
+
 async function sendOrderConfirmationToCustomer(order) {
   const subject = `Your XPOSTERS order ${order.orderId} is confirmed`;
   const html = `
     <p>Hi ${order.customer.name}, your XPOSTERS order <strong>${order.orderId}</strong> is confirmed!</p>
     <ul>${formatItemsListHtml(order.items)}</ul>
+    ${formatDiscountLineHtml(order)}
     <p><strong>Total: Rs ${order.subtotal}</strong></p>
     <p>Delivering to: ${order.customer.address}</p>
     <p>We'll update you when it ships. Thanks for shopping with XPOSTERS!</p>
@@ -63,6 +77,7 @@ async function sendOrderConfirmationToCustomer(order) {
   const text =
     `Hi ${order.customer.name}, your XPOSTERS order ${order.orderId} is confirmed!\n\n` +
     `${formatItemsListText(order.items)}\n\n` +
+    `${formatDiscountLineText(order)}` +
     `Total: Rs ${order.subtotal}\n\n` +
     `Delivering to: ${order.customer.address}\n\n` +
     `We'll update you when it ships. Thanks for shopping with XPOSTERS!`;
@@ -80,6 +95,7 @@ async function sendNewOrderAlertToOwner(order) {
   const html = `
     <p><strong>New order ${order.orderId}!</strong></p>
     <ul>${formatItemsListHtml(order.items)}</ul>
+    ${formatDiscountLineHtml(order)}
     <p><strong>Total: Rs ${order.subtotal}</strong></p>
     <p>Customer: ${order.customer.name}<br/>
     Phone: ${order.customer.phone}<br/>
@@ -89,6 +105,7 @@ async function sendNewOrderAlertToOwner(order) {
   const text =
     `New order ${order.orderId}!\n\n` +
     `${formatItemsListText(order.items)}\n\n` +
+    `${formatDiscountLineText(order)}` +
     `Total: Rs ${order.subtotal}\n\n` +
     `Customer: ${order.customer.name}\n` +
     `Phone: ${order.customer.phone}\n` +

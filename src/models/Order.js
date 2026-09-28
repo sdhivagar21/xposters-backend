@@ -33,7 +33,14 @@ const orderSchema = new mongoose.Schema(
       address: { type: String, required: true, trim: true },
     },
     items: { type: [orderItemSchema], required: true, validate: (v) => Array.isArray(v) && v.length > 0 },
+    // subtotal is the final amount charged, after any bulk-poster discount.
+    // discountPercent/discountAmount record what that discount was (both 0
+    // when the order didn't qualify) purely so emails and the admin orders
+    // page can show it - see computeOrderTotals in data/categories.js, which
+    // is what actually sets all three when an order is created.
     subtotal: { type: Number, required: true, min: 0 },
+    discountPercent: { type: Number, default: 0 },
+    discountAmount: { type: Number, default: 0 },
     // No real payment gateway yet — every order lands here as "placed".
     // The field exists so a future payment integration has somewhere to
     // record status transitions without a schema change.

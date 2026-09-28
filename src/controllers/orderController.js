@@ -6,7 +6,7 @@ const {
   sendCustomPosterConfirmationToCustomer,
   sendCustomPosterAlertToOwner,
 } = require("../utils/email");
-const { getSizeBySlug, getMinPixelsForSize } = require("../data/categories");
+const { getSizeBySlug, getMinPixelsForSize, computeOrderTotals } = require("../data/categories");
 const {
   uploadBufferToCloudinary,
   uploadRemoteUrlToCloudinary,
@@ -25,15 +25,20 @@ function serializeOrder(doc) {
     customer: o.customer,
     items: o.items,
     subtotal: o.subtotal,
+    discountPercent: o.discountPercent || 0,
+    discountAmount: o.discountAmount || 0,
     status: o.status,
     createdAt: o.createdAt,
   };
 }
 
 // POST /api/orders - the "place order" step. No real payment gateway yet;
-// this is where one would be called before the order is confirmed.
+// this is where one would be called before the order is confirmed. The
+// subtotal (and any bulk-poster discount) is computed here from `items`
+// rather than trusted from req.body, so a tampered request can't change
+// what actually gets charged/recorded.
 async function createOrder(req, res) {
-  const { customer, items, subtotal } = req.body;
+  const { customer, items } = req.body;
 
   if (!customer || !items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "customer and a non-empty items array are required" });
@@ -43,11 +48,15 @@ async function createOrder(req, res) {
     return res.status(400).json({ message: "customer needs a valid name, email, 10-digit phone, and address" });
   }
 
+  const { subtotal, discountPercent, discountAmount } = computeOrderTotals(items);
+
   const order = await Order.create({
     orderId: generateOrderId(),
     customer,
     items,
     subtotal,
+    discountPercent,
+    discountAmount,
     status: "placed",
   });
 

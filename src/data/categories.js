@@ -52,6 +52,35 @@ function getMinPixelsForSize(slug) {
   };
 }
 
+// Buy 3 or more posters in one order and this percentage comes off the raw
+// subtotal automatically - a bundle deal to encourage bigger carts. Kept
+// here alongside SIZES since it's another cart-wide pricing rule. Computed
+// server-side in orderController.js (via computeOrderTotals below) rather
+// than trusted from whatever the frontend sends, so it can't be spoofed by
+// a tampered request - the frontend has its own copy of these same numbers
+// (src/data/categories.js) purely to preview the discount live in the cart
+// before the order is placed.
+const BULK_DISCOUNT = { minQty: 3, percent: 23.08 };
+
+// items - the order's item array, each with `price` and `qty`. Returns the
+// raw (pre-discount) subtotal, whether this order qualifies, and the final
+// numbers to store on the Order (see models/Order.js's discountPercent/
+// discountAmount/subtotal fields).
+function computeOrderTotals(items) {
+  const rawSubtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
+  const eligible = totalQty >= BULK_DISCOUNT.minQty;
+  const discountAmount = eligible ? Math.round(rawSubtotal * (BULK_DISCOUNT.percent / 100)) : 0;
+
+  return {
+    rawSubtotal,
+    totalQty,
+    discountPercent: eligible ? BULK_DISCOUNT.percent : 0,
+    discountAmount,
+    subtotal: rawSubtotal - discountAmount,
+  };
+}
+
 module.exports = {
   CATEGORIES,
   CATEGORY_SLUGS,
@@ -60,4 +89,6 @@ module.exports = {
   getSizeBySlug,
   PRINT_DPI,
   getMinPixelsForSize,
+  BULK_DISCOUNT,
+  computeOrderTotals,
 };
