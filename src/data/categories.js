@@ -25,10 +25,10 @@ const CATEGORY_SLUGS = CATEGORIES.map((c) => c.slug);
 // work out the minimum pixel dimensions needed for a clean print at
 // PRINT_DPI.
 const SIZES = [
-  { slug: "a5", label: "A5", dimensions: '5.8" x 8.3"', price: 199, widthIn: 5.8, heightIn: 8.3 },
-  { slug: "a4", label: "A4", dimensions: '8.3" x 11.7"', price: 299, widthIn: 8.3, heightIn: 11.7 },
-  { slug: "a3", label: "A3", dimensions: '11.7" x 16.5"', price: 449, widthIn: 11.7, heightIn: 16.5 },
-  { slug: "13x19", label: '13" x 19"', dimensions: '13" x 19"', price: 599, widthIn: 13, heightIn: 19 },
+  { slug: "a5", label: "A5", dimensions: '5.8" x 8.3"', price: 60, widthIn: 5.8, heightIn: 8.3 },
+  { slug: "a4", label: "A4", dimensions: '8.3" x 11.7"', price: 70, widthIn: 8.3, heightIn: 11.7 },
+  { slug: "a3", label: "A3", dimensions: '11.7" x 16.5"', price: 100, widthIn: 11.7, heightIn: 16.5 },
+  { slug: "13x19", label: '13" x 19"', dimensions: '13" x 19"', price: 115, widthIn: 13, heightIn: 19 },
 ];
 
 const SIZE_SLUGS = SIZES.map((s) => s.slug);
