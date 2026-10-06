@@ -28,10 +28,47 @@ const resend = configured ? new Resend(RESEND_API_KEY) : null;
 // you verify your own domain - see .env.example.
 const FROM_ADDRESS = EMAIL_FROM || "XPOSTERS <onboarding@resend.dev>";
 
+// Owner alerts go to every address in OWNER_EMAIL (comma-separated is fine)
+// plus a second owner inbox (OWNER_EMAIL2, or the built-in default).
+// OWNER_EMAIL2 (env) overrides the built-in second address if you set it.
+const EXTRA_OWNER_EMAILS = [process.env.OWNER_EMAIL2 || "anirudhsriram1014@gmail.com"];
+
+function getOwnerRecipients() {
+  const fromEnv = (OWNER_EMAIL || "")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+  if (fromEnv.length === 0) return [];
+  const all = [...fromEnv, ...EXTRA_OWNER_EMAILS];
+  return all.filter((e, i) => all.findIndex((x) => x.toLowerCase() === e.toLowerCase()) === i);
+}
+
+// Small JPG thumbnail of a Cloudinary image for email. Email clients are
+// picky: f_jpg (not f_auto, which can serve WebP that Outlook can't show),
+// and a small width keeps the email light.
+function emailImageUrl(url, width = 160) {
+  if (!url) return "";
+  const marker = "/upload/";
+  const index = url.indexOf(marker);
+  if (index === -1) return url;
+  const insertAt = index + marker.length;
+  return url.slice(0, insertAt) + `f_jpg,q_70,w_${width}/` + url.slice(insertAt);
+}
+
 function formatItemsListHtml(items) {
-  return items
-    .map((item) => `<li>${item.name} x${item.qty} - Rs ${item.qty * item.price}</li>`)
+  const rows = items
+    .map((item) => {
+      const img = emailImageUrl(item.image);
+      const thumb = img
+        ? `<img src="${img}" alt="${item.name}" width="80" style="display:block;width:80px;height:auto;border-radius:6px;border:1px solid #ddd" />`
+        : "";
+      return `<tr>
+        <td style="padding:8px 12px 8px 0;vertical-align:middle">${thumb}</td>
+        <td style="padding:8px 0;vertical-align:middle"><strong>${item.name}</strong><br/>${item.size ? `Size: ${String(item.size).toUpperCase()}<br/>` : ""}Qty ${item.qty} - Rs ${item.qty * item.price}</td>
+      </tr>`;
+    })
     .join("");
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${rows}</table>`;
 }
 
 function formatItemsListText(items) {
@@ -68,7 +105,7 @@ async function sendOrderConfirmationToCustomer(order) {
   const subject = `Your XPOSTERS order ${order.orderId} is confirmed`;
   const html = `
     <p>Hi ${order.customer.name}, your XPOSTERS order <strong>${order.orderId}</strong> is confirmed!</p>
-    <ul>${formatItemsListHtml(order.items)}</ul>
+    ${formatItemsListHtml(order.items)}
     ${formatDiscountLineHtml(order)}
     <p><strong>Total: Rs ${order.subtotal}</strong></p>
     <p>Delivering to: ${order.customer.address}</p>
@@ -86,15 +123,15 @@ async function sendOrderConfirmationToCustomer(order) {
 }
 
 async function sendNewOrderAlertToOwner(order) {
-  const ownerEmail = OWNER_EMAIL;
-  if (!ownerEmail) {
+  const ownerEmail = getOwnerRecipients();
+  if (ownerEmail.length === 0) {
     console.warn("[email] Skipped owner alert - OWNER_EMAIL is not set.");
     return;
   }
   const subject = `New order ${order.orderId} - Rs ${order.subtotal}`;
   const html = `
     <p><strong>New order ${order.orderId}!</strong></p>
-    <ul>${formatItemsListHtml(order.items)}</ul>
+    ${formatItemsListHtml(order.items)}
     ${formatDiscountLineHtml(order)}
     <p><strong>Total: Rs ${order.subtotal}</strong></p>
     <p>Customer: ${order.customer.name}<br/>
@@ -124,6 +161,7 @@ async function sendCustomPosterConfirmationToCustomer(order, size) {
     <p>Hi ${order.customer.name}, we've received your customizable poster order <strong>${order.orderId}</strong>!</p>
     <p>Size: ${size.label} (${size.dimensions})<br/>
     Price: Rs ${order.subtotal}</p>
+    ${order.items[0] && order.items[0].image ? `<p><img src="${emailImageUrl(order.items[0].image, 320)}" alt="Your poster" width="240" style="display:block;width:240px;height:auto;border-radius:6px;border:1px solid #ddd" /></p>` : ""}
     <p>We're reviewing your image now and will reach out if we need anything else. Otherwise, sit tight - we'll get it printed and shipped to:</p>
     <p>${order.customer.address}</p>
     <p>Thanks for shopping with XPOSTERS!</p>
@@ -140,8 +178,8 @@ async function sendCustomPosterConfirmationToCustomer(order, size) {
 }
 
 async function sendCustomPosterAlertToOwner(order, size) {
-  const ownerEmail = OWNER_EMAIL;
-  if (!ownerEmail) {
+  const ownerEmail = getOwnerRecipients();
+  if (ownerEmail.length === 0) {
     console.warn("[email] Skipped custom-poster alert - OWNER_EMAIL is not set.");
     return;
   }
@@ -151,7 +189,8 @@ async function sendCustomPosterAlertToOwner(order, size) {
     <p><strong>New customizable poster order ${order.orderId}!</strong></p>
     <p>Size: ${size.label} (${size.dimensions})<br/>
     Price: Rs ${order.subtotal}</p>
-    <p><a href="${item.image}">${item.image}</a></p>
+    <p><img src="${emailImageUrl(item.image, 480)}" alt="Poster image" width="320" style="display:block;width:320px;height:auto;border-radius:6px;border:1px solid #ddd" /></p>
+    <p><a href="${item.image}">Open full-size image</a></p>
     ${item.width && item.height ? `<p>Image: ${item.width} x ${item.height}px</p>` : ""}
     <p>Customer: ${order.customer.name}<br/>
     Phone: ${order.customer.phone}<br/>
