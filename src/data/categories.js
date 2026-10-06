@@ -26,7 +26,7 @@ const CATEGORY_SLUGS = CATEGORIES.map((c) => c.slug);
 // PRINT_DPI.
 const SIZES = [
   { slug: "a5", label: "A5", dimensions: '5.8" x 8.3"', price: 60, widthIn: 5.8, heightIn: 8.3 },
-  { slug: "a4", label: "A4", dimensions: '8.3" x 11.7"', price: 70, widthIn: 8.3, heightIn: 11.7 },
+  { slug: "a4", label: "A4", dimensions: '8.3" x 11.7"', price: 95, widthIn: 8.3, heightIn: 11.7 },
   { slug: "a3", label: "A3", dimensions: '11.7" x 16.5"', price: 130, widthIn: 11.7, heightIn: 16.5 },
 ];
 
