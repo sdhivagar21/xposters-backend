@@ -6,7 +6,7 @@ const {
   sendCustomPosterConfirmationToCustomer,
   sendCustomPosterAlertToOwner,
 } = require("../utils/email");
-const { getSizeBySlug, getMinPixelsForSize, computeOrderTotals } = require("../data/categories");
+const { getSizeBySlug, getMinPixelsForSize, computeOrderTotals, normalizeItemPrices } = require("../data/categories");
 const {
   uploadBufferToCloudinary,
   uploadRemoteUrlToCloudinary,
@@ -27,6 +27,7 @@ function serializeOrder(doc) {
     subtotal: o.subtotal,
     discountPercent: o.discountPercent || 0,
     discountAmount: o.discountAmount || 0,
+    a4DealAmount: o.a4DealAmount || 0,
     status: o.status,
     createdAt: o.createdAt,
   };
@@ -48,15 +49,16 @@ async function createOrder(req, res) {
     return res.status(400).json({ message: "customer needs a valid name, email, 10-digit phone, and address" });
   }
 
-  const { subtotal, discountPercent, discountAmount } = computeOrderTotals(items);
+  const { subtotal, discountPercent, discountAmount, a4DealAmount } = computeOrderTotals(items);
 
   const order = await Order.create({
     orderId: generateOrderId(),
     customer,
-    items,
+    items: normalizeItemPrices(items),
     subtotal,
     discountPercent,
     discountAmount,
+    a4DealAmount,
     status: "placed",
   });
 

@@ -6,7 +6,7 @@ const orderItemSchema = new mongoose.Schema(
     name: { type: String, required: true },
     price: { type: Number, required: true },
     image: { type: String },
-    // Print size slug (a5/a4/a3/13x19) - added when per-size pricing
+    // Print size slug (a5/a4/a3) - added when per-size pricing
     // shipped. Optional so older orders placed before this field existed
     // still validate fine.
     size: { type: String },
@@ -41,6 +41,8 @@ const orderSchema = new mongoose.Schema(
     subtotal: { type: Number, required: true, min: 0 },
     discountPercent: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
+    // Saving from the "5 A4 posters for a flat price" deal (0 if not used).
+    a4DealAmount: { type: Number, default: 0 },
     // No real payment gateway yet — every order lands here as "placed".
     // The field exists so a future payment integration has somewhere to
     // record status transitions without a schema change.

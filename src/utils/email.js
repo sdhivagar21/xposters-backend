@@ -92,13 +92,25 @@ async function sendEmail(to, subject, html, text) {
 // bulk-poster discount (order.discountAmount > 0) - blank otherwise, so a
 // non-discounted order's email looks exactly as it always has.
 function formatDiscountLineHtml(order) {
-  if (!order.discountAmount) return "";
-  return `<p>Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}</p>`;
+  let html = "";
+  if (order.discountAmount) {
+    html += `<p>Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}</p>`;
+  }
+  if (order.a4DealAmount) {
+    html += `<p>A4 deal (5 A4 posters for Rs 375): -Rs ${order.a4DealAmount}</p>`;
+  }
+  return html;
 }
 
 function formatDiscountLineText(order) {
-  if (!order.discountAmount) return "";
-  return `Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}\n`;
+  let text = "";
+  if (order.discountAmount) {
+    text += `Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}\n`;
+  }
+  if (order.a4DealAmount) {
+    text += `A4 deal (5 A4 posters for Rs 375): -Rs ${order.a4DealAmount}\n`;
+  }
+  return text;
 }
 
 async function sendOrderConfirmationToCustomer(order) {

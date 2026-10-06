@@ -61,22 +61,52 @@ function getMinPixelsForSize(slug) {
 // before the order is placed.
 const BULK_DISCOUNT = { minQty: 3, percent: 23.08 };
 
+// A4 pack deal: every full set of 5 A4 posters in an order costs a flat
+// price instead of 5 x the A4 price. A4 posters are NOT part of the 3+
+// bundle discount above - the pack deal is their only discount. Posters in
+// other sizes still earn the bundle discount (counted among themselves).
+// The frontend keeps a copy of these numbers (src/data/categories.js) only
+// to preview the totals live in the cart.
+const A4_DEAL = { size: "a4", qty: 5, price: 375 };
+
+// Customers' carts live in their own browser, so an item can carry an old
+// price from before a price change (or a tampered one). Whenever the item's
+// size is a known print size, the price comes from SIZES instead.
+function normalizeItemPrices(items) {
+  return items.map((item) => {
+    const size = getSizeBySlug(item.size);
+    return size ? { ...item, price: size.price } : item;
+  });
+}
+
 // items - the order's item array, each with `price` and `qty`. Returns the
 // raw (pre-discount) subtotal, whether this order qualifies, and the final
 // numbers to store on the Order (see models/Order.js's discountPercent/
-// discountAmount/subtotal fields).
-function computeOrderTotals(items) {
+// discountAmount/a4DealAmount/subtotal fields).
+function computeOrderTotals(rawItems) {
+  const items = normalizeItemPrices(rawItems);
   const rawSubtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
   const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
-  const eligible = totalQty >= BULK_DISCOUNT.minQty;
-  const discountAmount = eligible ? Math.round(rawSubtotal * (BULK_DISCOUNT.percent / 100)) : 0;
+
+  const a4Items = items.filter((item) => item.size === A4_DEAL.size);
+  const a4Qty = a4Items.reduce((sum, item) => sum + item.qty, 0);
+  const a4Price = (getSizeBySlug(A4_DEAL.size) || {}).price || 0;
+  const a4Packs = Math.floor(a4Qty / A4_DEAL.qty);
+  const a4DealAmount = Math.max(0, a4Packs * (A4_DEAL.qty * a4Price - A4_DEAL.price));
+
+  const otherItems = items.filter((item) => item.size !== A4_DEAL.size);
+  const otherQty = otherItems.reduce((sum, item) => sum + item.qty, 0);
+  const otherSubtotal = otherItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const eligible = otherQty >= BULK_DISCOUNT.minQty;
+  const discountAmount = eligible ? Math.round(otherSubtotal * (BULK_DISCOUNT.percent / 100)) : 0;
 
   return {
     rawSubtotal,
     totalQty,
     discountPercent: eligible ? BULK_DISCOUNT.percent : 0,
     discountAmount,
-    subtotal: rawSubtotal - discountAmount,
+    a4DealAmount,
+    subtotal: rawSubtotal - discountAmount - a4DealAmount,
   };
 }
 
@@ -89,5 +119,7 @@ module.exports = {
   PRINT_DPI,
   getMinPixelsForSize,
   BULK_DISCOUNT,
+  A4_DEAL,
+  normalizeItemPrices,
   computeOrderTotals,
 };
