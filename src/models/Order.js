@@ -41,8 +41,8 @@ const orderSchema = new mongoose.Schema(
     subtotal: { type: Number, required: true, min: 0 },
     discountPercent: { type: Number, default: 0 },
     discountAmount: { type: Number, default: 0 },
-    // Saving from the "5 A4 posters for a flat price" deal (0 if not used).
-    a4DealAmount: { type: Number, default: 0 },
+    // Saving from the pack deals (5 A4 for Rs 375, 5 A5 for Rs 225); 0 if unused.
+    packDealAmount: { type: Number, default: 0 },
     // No real payment gateway yet — every order lands here as "placed".
     // The field exists so a future payment integration has somewhere to
     // record status transitions without a schema change.

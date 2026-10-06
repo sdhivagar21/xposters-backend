@@ -27,7 +27,7 @@ function serializeOrder(doc) {
     subtotal: o.subtotal,
     discountPercent: o.discountPercent || 0,
     discountAmount: o.discountAmount || 0,
-    a4DealAmount: o.a4DealAmount || 0,
+    packDealAmount: o.packDealAmount || 0,
     status: o.status,
     createdAt: o.createdAt,
   };
@@ -49,7 +49,7 @@ async function createOrder(req, res) {
     return res.status(400).json({ message: "customer needs a valid name, email, 10-digit phone, and address" });
   }
 
-  const { subtotal, discountPercent, discountAmount, a4DealAmount } = computeOrderTotals(items);
+  const { subtotal, discountPercent, discountAmount, packDealAmount } = computeOrderTotals(items);
 
   const order = await Order.create({
     orderId: generateOrderId(),
@@ -58,7 +58,7 @@ async function createOrder(req, res) {
     subtotal,
     discountPercent,
     discountAmount,
-    a4DealAmount,
+    packDealAmount,
     status: "placed",
   });
 

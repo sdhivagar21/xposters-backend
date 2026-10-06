@@ -96,8 +96,8 @@ function formatDiscountLineHtml(order) {
   if (order.discountAmount) {
     html += `<p>Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}</p>`;
   }
-  if (order.a4DealAmount) {
-    html += `<p>A4 deal (5 A4 posters for Rs 375): -Rs ${order.a4DealAmount}</p>`;
+  if (order.packDealAmount) {
+    html += `<p>Pack deal (5 A4 for Rs 375 / 5 A5 for Rs 225): -Rs ${order.packDealAmount}</p>`;
   }
   return html;
 }
@@ -107,8 +107,8 @@ function formatDiscountLineText(order) {
   if (order.discountAmount) {
     text += `Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}\n`;
   }
-  if (order.a4DealAmount) {
-    text += `A4 deal (5 A4 posters for Rs 375): -Rs ${order.a4DealAmount}\n`;
+  if (order.packDealAmount) {
+    text += `Pack deal (5 A4 for Rs 375 / 5 A5 for Rs 225): -Rs ${order.packDealAmount}\n`;
   }
   return text;
 }
