@@ -6,6 +6,8 @@ const {
   sendCustomPosterConfirmationToCustomer,
   sendCustomPosterAlertToOwner,
 } = require("../utils/email");
+const { enhanceImage } = require("../utils/enhanceImage");
+const cloudinary = require("../config/cloudinary");
 const { getSizeBySlug, getMinPixelsForSize, computeOrderTotals, normalizeItemPrices } = require("../data/categories");
 const {
   uploadBufferToCloudinary,
@@ -70,6 +72,79 @@ async function createOrder(req, res) {
   sendNewOrderAlertToOwner(order).catch(() => {});
 }
 
+
+// Downloads an image Cloudinary is hosting (we only ever fetch URLs that
+// Cloudinary itself produced, never a customer-supplied host directly, so a
+// pasted link can't be used to make this server request arbitrary addresses).
+async function downloadHostedImage(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("download failed");
+  return Buffer.from(await r.arrayBuffer());
+}
+
+// Shared by the live preview endpoint and the order itself: takes an
+// uploaded file or a pasted link, enhances it to print quality for `size`,
+// and hosts the enhanced version on Cloudinary. The raw original is only a
+// temporary stepping stone for links and is deleted straight away.
+async function enhanceToCloudinary({ file, imageLink, size }) {
+  let sourceBuffer;
+  if (file) {
+    sourceBuffer = file.buffer;
+  } else {
+    let remote;
+    try {
+      remote = await uploadRemoteUrlToCloudinary(imageLink.trim(), { folder: "custom-orders-src" });
+      sourceBuffer = await downloadHostedImage(remote.secure_url);
+    } catch (err) {
+      const e = new Error("Couldn't load that image link - check the URL or upload the file instead.");
+      e.status = 400;
+      throw e;
+    } finally {
+      if (remote) deleteFromCloudinary(remote.public_id);
+    }
+  }
+
+  let enhanced;
+  try {
+    enhanced = await enhanceImage(sourceBuffer, size);
+  } catch (err) {
+    if (err.status) throw err;
+    const e = new Error("Couldn't process that image - please try a different file.");
+    e.status = 400;
+    throw e;
+  }
+
+  const hosted = await uploadBufferToCloudinary(enhanced.buffer, { folder: "custom-orders" });
+  return { hosted, enhanced };
+}
+
+// POST /api/orders/custom/enhance - the live preview step. Returns the
+// enhanced image so the customer can see it before submitting; submitting
+// then references it by its Cloudinary id instead of uploading again.
+async function enhanceCustomImage(req, res) {
+  const size = getSizeBySlug(req.body.size);
+  if (!size) return res.status(400).json({ message: "Choose a valid print size." });
+  const imageLink = req.body.imageLink;
+  if (!req.file && !(imageLink && imageLink.trim())) {
+    return res.status(400).json({ message: "Upload an image or paste a link to one." });
+  }
+  try {
+    const { hosted, enhanced } = await enhanceToCloudinary({ file: req.file, imageLink, size });
+    res.json({
+      url: hosted.secure_url,
+      publicId: hosted.public_id,
+      width: enhanced.width,
+      height: enhanced.height,
+      originalWidth: enhanced.originalWidth,
+      originalHeight: enhanced.originalHeight,
+      upscaled: enhanced.upscaled,
+      dpi: enhanced.dpi,
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message || "Couldn't enhance that image right now." });
+  }
+}
+
 // POST /api/orders/custom - a customer uploads their own image (or pastes a
 // link to one), picks a print size, and submits their details, instead of
 // buying an existing product. This still creates a regular Order (with one
@@ -90,28 +165,28 @@ async function createCustomOrder(req, res) {
   if (!name || !EMAIL_RE.test(email || "") || !PHONE_RE.test(phone || "") || !address) {
     return res.status(400).json({ message: "Enter a valid name, email, 10-digit phone, and address." });
   }
-  if (!file && !(imageLink && imageLink.trim())) {
+  if (!file && !(imageLink && imageLink.trim()) && !req.body.enhancedPublicId) {
     return res.status(400).json({ message: "Upload an image or paste a link to one." });
   }
 
+  // The customer normally enhanced the image in the preview step already and
+  // just sends its id here. Only trust ids inside our own custom-orders
+  // folder, and read the real dimensions back from Cloudinary rather than
+  // from the request. If there's no enhanced id (older client, or the
+  // preview was skipped), enhance now.
   let uploadResult;
+  const { enhancedPublicId } = req.body;
   try {
-    uploadResult = file
-      ? await uploadBufferToCloudinary(file.buffer, { folder: "custom-orders" })
-      : await uploadRemoteUrlToCloudinary(imageLink.trim(), { folder: "custom-orders" });
+    if (enhancedPublicId && /^custom-orders\/[\w-]+$/.test(enhancedPublicId)) {
+      const r = await cloudinary.api.resource(enhancedPublicId);
+      uploadResult = { secure_url: r.secure_url, public_id: r.public_id, width: r.width, height: r.height };
+    } else {
+      const { hosted } = await enhanceToCloudinary({ file, imageLink, size });
+      uploadResult = hosted;
+    }
   } catch (err) {
-    return res.status(400).json({
-      message: file
-        ? "Couldn't process that image - please try a different file."
-        : "Couldn't load that image link - check the URL or upload the file instead.",
-    });
-  }
-
-  const { minWidth, minHeight } = getMinPixelsForSize(size.slug);
-  if (uploadResult.width < minWidth || uploadResult.height < minHeight) {
-    await deleteFromCloudinary(uploadResult.public_id);
-    return res.status(400).json({
-      message: `Image quality is too low for a clean ${size.label} print. Please upload a higher-resolution image (at least ${minWidth}x${minHeight}px) or choose a smaller size.`,
+    return res.status(err.status || 400).json({
+      message: err.status ? err.message : "Couldn't process that image - please try again.",
     });
   }
 
@@ -124,7 +199,7 @@ async function createCustomOrder(req, res) {
         price: size.price,
         image: uploadResult.secure_url,
         imagePublicId: uploadResult.public_id,
-        imageLink: file ? undefined : imageLink.trim(),
+        imageLink: imageLink && imageLink.trim() ? imageLink.trim() : undefined,
         size: size.slug,
         width: uploadResult.width,
         height: uploadResult.height,
@@ -168,4 +243,4 @@ async function updateOrderStatus(req, res) {
   res.json(serializeOrder(order));
 }
 
-module.exports = { createOrder, createCustomOrder, adminListOrders, updateOrderStatus };
+module.exports = { createOrder, createCustomOrder, enhanceCustomImage, adminListOrders, updateOrderStatus };

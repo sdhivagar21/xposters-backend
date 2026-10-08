@@ -18,6 +18,7 @@ const orderRoutes = require("./routes/orderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 
 const app = express();
+app.set("trust proxy", 1); // Render sits behind a proxy - needed so req.ip is the real visitor
 
 // CLIENT_URL is the deployed Vercel frontend origin. Also always allow
 // localhost so `npm run dev` on the frontend keeps working against this
