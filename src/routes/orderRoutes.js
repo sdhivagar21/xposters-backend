@@ -18,7 +18,7 @@ function limitEnhance(req, res, next) {
   next();
 }
 
-router.post("/custom/enhance", limitEnhance, upload.single("image"), enhanceCustomImage);
-router.post("/custom", upload.single("image"), createCustomOrder);
+router.post("/custom/enhance", limitEnhance, upload.large.single("image"), enhanceCustomImage);
+router.post("/custom", upload.large.single("image"), createCustomOrder);
 
 module.exports = router;

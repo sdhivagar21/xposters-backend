@@ -10,6 +10,9 @@ function errorHandler(err, req, res, next) {
   if (err.name === "ValidationError") {
     return res.status(400).json({ message: Object.values(err.errors)[0]?.message || "Validation failed" });
   }
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(413).json({ message: "That file is too large (max 40MB) - try a smaller one." });
+  }
   if (err.name === "CastError") {
     return res.status(400).json({ message: "Invalid id format" });
   }

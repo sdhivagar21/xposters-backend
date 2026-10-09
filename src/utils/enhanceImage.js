@@ -59,12 +59,18 @@ async function enhanceImage(buffer, size) {
   }
 
   const strength = upscaled ? Math.min(scale, 5) : 1;
-  const out = await fromRaw(step)
-    .sharpen({ sigma: 0.8 + strength * 0.25, m1: 0.6, m2: 1.8 })
-    .modulate({ saturation: 1.04 })
-    .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
-    .withMetadata({ density: ENHANCE_DPI })
-    .toBuffer();
+  // Cloudinary rejects files over 10MB, so if a very detailed image comes out
+  // bigger than that at top quality, step the JPEG quality down until it fits.
+  let out;
+  for (const quality of [92, 86, 80, 74, 68]) {
+    out = await fromRaw(step)
+      .sharpen({ sigma: 0.8 + strength * 0.25, m1: 0.6, m2: 1.8 })
+      .modulate({ saturation: 1.04 })
+      .jpeg({ quality, chromaSubsampling: quality > 80 ? "4:4:4" : "4:2:0" })
+      .withMetadata({ density: ENHANCE_DPI })
+      .toBuffer();
+    if (out.length <= 9.5 * 1024 * 1024) break;
+  }
 
   return {
     buffer: out,
