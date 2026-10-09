@@ -35,7 +35,7 @@ const CONCURRENCY = 8; // parallel warm-up requests in flight at once
 
 // Must stay in sync with EAGER_TRANSFORMS in src/utils/cloudinaryUpload.js
 // and the frontend's optimizedImage() util (src/utils/cloudinaryUrl.js).
-const WIDTHS = [380, 320];
+const WIDTHS = [380, 320, 240, 160];
 
 function optimizedUrl(url, width) {
   const marker = "/upload/";
