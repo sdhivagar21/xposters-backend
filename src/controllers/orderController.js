@@ -15,6 +15,32 @@ const {
   deleteFromCloudinary,
 } = require("../utils/cloudinaryUpload");
 
+const mongoose = require("mongoose");
+
+// Cleans client-sent order items: a real product id OR a hosted custom poster
+// (its Cloudinary id must live in custom-orders), never arbitrary values.
+function sanitizeItems(items) {
+  return items.map((raw) => {
+    const item = { ...raw };
+    const qty = Math.floor(Number(item.qty));
+    item.qty = Number.isFinite(qty) && qty >= 1 ? Math.min(qty, 500) : 1;
+    if (!mongoose.isValidObjectId(item.product)) delete item.product;
+    if (typeof item.imagePublicId === "string" && /^custom-orders\/[\w-]+$/.test(item.imagePublicId)) {
+      item.width = Number(item.width) > 0 ? Math.floor(Number(item.width)) : undefined;
+      item.height = Number(item.height) > 0 ? Math.floor(Number(item.height)) : undefined;
+      item.notes = typeof item.notes === "string" ? item.notes.slice(0, 500) : undefined;
+    } else {
+      delete item.imagePublicId;
+      delete item.width;
+      delete item.height;
+      delete item.notes;
+    }
+    delete item.imageLink;
+    if (typeof item.image !== "string" || !item.image.startsWith("https://res.cloudinary.com/")) delete item.image;
+    return item;
+  });
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\d{10}$/;
 const ORDER_STATUSES = Order.schema.path("status").enumValues;
@@ -41,7 +67,8 @@ function serializeOrder(doc) {
 // rather than trusted from req.body, so a tampered request can't change
 // what actually gets charged/recorded.
 async function createOrder(req, res) {
-  const { customer, items } = req.body;
+  const { customer } = req.body;
+  let { items } = req.body;
 
   if (!customer || !items || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ message: "customer and a non-empty items array are required" });
@@ -50,6 +77,7 @@ async function createOrder(req, res) {
   if (!name || !EMAIL_RE.test(email || "") || !PHONE_RE.test(phone || "") || !address) {
     return res.status(400).json({ message: "customer needs a valid name, email, 10-digit phone, and address" });
   }
+  items = sanitizeItems(items);
 
   const { subtotal, discountPercent, discountAmount, packDealAmount } = computeOrderTotals(items);
 

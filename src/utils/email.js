@@ -64,7 +64,7 @@ function formatItemsListHtml(items) {
         : "";
       return `<tr>
         <td style="padding:8px 12px 8px 0;vertical-align:middle">${thumb}</td>
-        <td style="padding:8px 0;vertical-align:middle"><strong>${item.name}</strong><br/>${item.size ? `Size: ${String(item.size).toUpperCase()}<br/>` : ""}Qty ${item.qty} - Rs ${item.qty * item.price}</td>
+        <td style="padding:8px 0;vertical-align:middle"><strong>${item.name}</strong><br/>${item.size ? `Size: ${String(item.size).toUpperCase()}<br/>` : ""}Qty ${item.qty} - Rs ${item.qty * item.price}${item.width ? `<br/>Print file: ${item.width}x${item.height}px` : ""}${item.notes ? `<br/>Notes: ${String(item.notes).replace(/[<>&]/g, "")}` : ""}</td>
       </tr>`;
     })
     .join("");
@@ -72,7 +72,7 @@ function formatItemsListHtml(items) {
 }
 
 function formatItemsListText(items) {
-  return items.map((item) => `- ${item.name} x${item.qty} (Rs ${item.qty * item.price})`).join("\n");
+  return items.map((item) => `- ${item.name} x${item.qty} (Rs ${item.qty * item.price})${item.notes ? ` - Notes: ${item.notes}` : ""}`).join("\n");
 }
 
 async function sendEmail(to, subject, html, text) {
