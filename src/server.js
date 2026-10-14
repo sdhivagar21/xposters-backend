@@ -11,6 +11,7 @@ const compression = require("compression");
 
 const connectDB = require("./config/db");
 const seedAdmin = require("./utils/seedAdmin");
+const { checkMilestones } = require("./utils/milestones");
 const { notFound, errorHandler } = require("./middleware/errorHandler");
 
 const productRoutes = require("./routes/productRoutes");
@@ -57,6 +58,9 @@ async function start() {
   await connectDB();
   await seedAdmin();
   app.listen(PORT, () => console.log(`[server] listening on port ${PORT}`));
+  // Catches up on milestones already passed (e.g. sales made before this
+  // check existed) without holding up the server starting.
+  checkMilestones().catch((err) => console.error("[milestones] startup check failed:", err.message));
 }
 
 start().catch((err) => {

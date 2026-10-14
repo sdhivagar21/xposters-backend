@@ -1,9 +1,9 @@
 // XPOSTERS - reset the admin login password.
 //
-// Fixes "Invalid email or password" when your database still has an older
-// admin login than what's currently set in Render (your database only ever
-// creates the admin account once, on the very first server start - changing
-// ADMIN_EMAIL/ADMIN_PASSWORD in Render later does NOT update it).
+// Usually not needed any more: the server now syncs the admin login from
+// ADMIN_EMAIL/ADMIN_PASSWORD on every start (see src/utils/seedAdmin.js), so
+// changing them in Render and redeploying is enough. This is for setting a
+// login directly in the database without redeploying.
 //
 // Run this from inside your xposters-backend folder, with your real .env
 // in place (same .env your server uses - specifically MONGODB_URI must

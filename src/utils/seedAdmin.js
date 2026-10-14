@@ -1,27 +1,37 @@
 const Admin = require("../models/Admin");
 
-// Runs on every server start. If no admin exists yet, creates one from
-// ADMIN_EMAIL / ADMIN_PASSWORD in .env — so the first deploy has a working
-// login without needing to touch the database by hand. Safe to run every
-// boot: it's a no-op once an admin already exists.
+// Runs on every server start and makes sure the login in ADMIN_EMAIL /
+// ADMIN_PASSWORD (.env locally, the Environment tab on Render) actually
+// works: creates that admin if it doesn't exist yet, or resets its password
+// if ADMIN_PASSWORD was changed since. So changing either value and
+// restarting/redeploying is all it takes to change the admin login. Any
+// other admin accounts already in the database are left untouched.
 async function seedAdmin() {
-  const existing = await Admin.countDocuments();
-  if (existing > 0) return;
-
-  const email = process.env.ADMIN_EMAIL;
+  const email = (process.env.ADMIN_EMAIL || "").toLowerCase().trim();
   const password = process.env.ADMIN_PASSWORD;
 
   if (!email || !password) {
-    console.warn(
-      "[seed] No admin account exists yet, and ADMIN_EMAIL/ADMIN_PASSWORD are not set — " +
-        "set them in .env and restart the server to create the first admin login."
-    );
+    if ((await Admin.countDocuments()) === 0) {
+      console.warn(
+        "[seed] No admin account exists yet, and ADMIN_EMAIL/ADMIN_PASSWORD are not set — " +
+          "set them in .env and restart the server to create the first admin login."
+      );
+    }
     return;
   }
 
+  const existing = await Admin.findOne({ email });
+  if (existing && (await existing.comparePassword(password))) return;
+
   const passwordHash = await Admin.hashPassword(password);
-  await Admin.create({ email: email.toLowerCase().trim(), passwordHash });
-  console.log(`[seed] Created initial admin account: ${email}`);
+  if (existing) {
+    existing.passwordHash = passwordHash;
+    await existing.save();
+    console.log(`[seed] Updated admin password for ${email} to match ADMIN_PASSWORD`);
+  } else {
+    await Admin.create({ email, passwordHash });
+    console.log(`[seed] Created admin account: ${email}`);
+  }
 }
 
 module.exports = seedAdmin;

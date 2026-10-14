@@ -17,9 +17,12 @@ login/product-management, with images stored on Cloudinary.
 3. Copy `.env.example` to `.env` and fill in the values from steps 1–2, plus:
    - `JWT_SECRET` — any long random string (a command to generate one is in
      the example file)
-   - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — your first admin login. The server
-     creates this account automatically on first boot, only if no admin
-     exists yet.
+   - `ADMIN_EMAIL` / `ADMIN_PASSWORD` — your admin login. On every start
+     the server creates this account if it's missing, or resets its
+     password to match if you changed `ADMIN_PASSWORD`.
+   - `MILESTONE_EMAIL` (optional) — who gets the one-time celebration email
+     each time total sales cross a milestone (Rs 5,000, Rs 10,000, ...).
+     Defaults to sdhivagar21@gmail.com.
    - `CLIENT_URL` — your deployed frontend's URL (for CORS). Leave the
      default for local development.
 
@@ -50,6 +53,7 @@ login/product-management, with images stored on Cloudinary.
 - `PUT /api/admin/products/:id` — update a product (same fields; `image` optional — only send it to replace the photo)
 - `DELETE /api/admin/products/:id` — delete a product (also removes its Cloudinary image)
 - `GET /api/admin/orders` — all orders, newest first
+- `GET /api/admin/stats` — total collected (all time and this month), order counts, and sales-milestone progress
 
 ## Deploying to Render
 

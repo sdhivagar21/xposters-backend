@@ -43,6 +43,20 @@ function getOwnerRecipients() {
   return all.filter((e, i) => all.findIndex((x) => x.toLowerCase() === e.toLowerCase()) === i);
 }
 
+// Sales-milestone emails go only to MILESTONE_EMAIL (comma-separated is
+// fine), or the built-in default if it isn't set.
+function getMilestoneRecipients() {
+  return (process.env.MILESTONE_EMAIL || "sdhivagar21@gmail.com")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+}
+
+// 123456 -> "Rs 1,23,456" (Indian digit grouping)
+function formatRs(amount) {
+  return `Rs ${Number(amount).toLocaleString("en-IN")}`;
+}
+
 // Small JPG thumbnail of a Cloudinary image for email. Email clients are
 // picky: f_jpg (not f_auto, which can serve WebP that Outlook can't show),
 // and a small width keeps the email light.
@@ -75,16 +89,20 @@ function formatItemsListText(items) {
   return items.map((item) => `- ${item.name} x${item.qty} (Rs ${item.qty * item.price})${item.notes ? ` - Notes: ${item.notes}` : ""}`).join("\n");
 }
 
+// Resolves true once Resend accepted the email, false if it was skipped or
+// failed (already logged) - never throws.
 async function sendEmail(to, subject, html, text) {
   if (!configured) {
     console.warn("[email] Skipped - set RESEND_API_KEY to enable.");
-    return;
+    return false;
   }
   try {
     const { error } = await resend.emails.send({ from: FROM_ADDRESS, to, subject, html, text });
     if (error) throw new Error(error.message || JSON.stringify(error));
+    return true;
   } catch (err) {
     console.error(`[email] Failed to send to ${to}:`, err.message);
+    return false;
   }
 }
 
@@ -225,9 +243,46 @@ async function sendCustomPosterAlertToOwner(order, size) {
   await sendEmail(ownerEmail, subject, html, text);
 }
 
+// The "special" celebration email for crossing a sales milestone (see
+// utils/milestones.js). milestones - every milestone being announced,
+// smallest first: usually one, more if a big order or the very first check
+// jumped past several at once. order - the order that pushed the total
+// over, or undefined when found on server start. Resolves true if sent.
+async function sendMilestoneEmail({ milestones, total, orders, next, order }) {
+  const top = milestones[milestones.length - 1];
+  const earlier = milestones.slice(0, -1);
+  const subject = `XPOSTERS crossed ${formatRs(top)} in sales!`;
+  const html = `
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#0c0b09" style="background:#0c0b09;border-radius:8px">
+      <tr><td align="center" style="padding:36px 24px;font-family:Arial,Helvetica,sans-serif;color:#f3ede2">
+        <p style="margin:0;font-size:12px;letter-spacing:4px;color:#a49a88">XPOSTERS MILESTONE</p>
+        <p style="margin:18px 0 6px;font-size:46px;font-weight:bold;color:#e2bd6c">${formatRs(top)}</p>
+        <p style="margin:0;font-size:17px">collected on XPOSTERS - congratulations!</p>
+        ${earlier.length ? `<p style="margin:14px 0 0;font-size:13px;color:#a49a88">Also passed: ${earlier.map(formatRs).join(", ")}</p>` : ""}
+        <p style="margin:28px 0 0;font-size:15px;line-height:1.7">
+          Total collected so far: <strong style="color:#e2bd6c">${formatRs(total)}</strong><br/>
+          Orders so far: <strong>${orders.toLocaleString("en-IN")}</strong>
+          ${order ? `<br/>Order ${order.orderId} (${formatRs(order.subtotal)}) took it over the line.` : ""}
+        </p>
+        <p style="margin:24px 0 0;font-size:13px;color:#a49a88">Next milestone: ${formatRs(next)} - ${formatRs(next - total)} to go.</p>
+      </td></tr>
+    </table>
+  `;
+  const text =
+    `XPOSTERS MILESTONE: ${formatRs(top)} collected - congratulations!\n` +
+    (earlier.length ? `Also passed: ${earlier.map(formatRs).join(", ")}\n` : "") +
+    `\nTotal collected so far: ${formatRs(total)}\n` +
+    `Orders so far: ${orders.toLocaleString("en-IN")}\n` +
+    (order ? `Order ${order.orderId} (${formatRs(order.subtotal)}) took it over the line.\n` : "") +
+    `\nNext milestone: ${formatRs(next)} - ${formatRs(next - total)} to go.`;
+
+  return sendEmail(getMilestoneRecipients(), subject, html, text);
+}
+
 module.exports = {
   sendOrderConfirmationToCustomer,
   sendNewOrderAlertToOwner,
   sendCustomPosterConfirmationToCustomer,
   sendCustomPosterAlertToOwner,
+  sendMilestoneEmail,
 };

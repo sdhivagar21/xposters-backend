@@ -1,5 +1,7 @@
 const Order = require("../models/Order");
+const Milestone = require("../models/Milestone");
 const { generateOrderId } = require("../utils/orderId");
+const { checkMilestones, getSalesTotals, milestonesUpTo, nextMilestone } = require("../utils/milestones");
 const {
   sendOrderConfirmationToCustomer,
   sendNewOrderAlertToOwner,
@@ -98,6 +100,7 @@ async function createOrder(req, res) {
   // send never delays or breaks placing the order for the customer.
   sendOrderConfirmationToCustomer(order).catch(() => {});
   sendNewOrderAlertToOwner(order).catch(() => {});
+  checkMilestones(order).catch((err) => console.error("[milestones] check failed:", err.message));
 }
 
 
@@ -247,12 +250,30 @@ async function createCustomOrder(req, res) {
   // order, so they're not left wondering whether it went through.
   sendCustomPosterConfirmationToCustomer(order, size).catch(() => {});
   sendCustomPosterAlertToOwner(order, size).catch(() => {});
+  checkMilestones(order).catch((err) => console.error("[milestones] check failed:", err.message));
 }
 
 // GET /api/admin/orders
 async function adminListOrders(req, res) {
   const orders = await Order.find({}).sort({ createdAt: -1 });
   res.json(orders.map(serializeOrder));
+}
+
+// GET /api/admin/stats - total collected (all time and this month, Indian
+// time) plus milestone progress, for the summary at the top of the admin
+// pages. reachedAt is null for a milestone the server hasn't recorded yet.
+async function adminSalesStats(req, res) {
+  const totals = await getSalesTotals();
+  const reached = milestonesUpTo(totals.total);
+  const records = await Milestone.find({ amount: { $in: reached } }, "amount createdAt").lean();
+  const reachedAt = new Map(records.map((r) => [r.amount, r.createdAt]));
+  res.json({
+    ...totals,
+    milestones: {
+      reached: reached.map((amount) => ({ amount, reachedAt: reachedAt.get(amount) || null })),
+      next: nextMilestone(totals.total),
+    },
+  });
 }
 
 // PATCH /api/admin/orders/:id/status - move an order to a new stage
@@ -271,4 +292,11 @@ async function updateOrderStatus(req, res) {
   res.json(serializeOrder(order));
 }
 
-module.exports = { createOrder, createCustomOrder, enhanceCustomImage, adminListOrders, updateOrderStatus };
+module.exports = {
+  createOrder,
+  createCustomOrder,
+  enhanceCustomImage,
+  adminListOrders,
+  adminSalesStats,
+  updateOrderStatus,
+};
