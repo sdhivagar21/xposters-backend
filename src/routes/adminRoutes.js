@@ -6,7 +6,7 @@ const {
   updateProduct,
   deleteProduct,
 } = require("../controllers/adminProductController");
-const { adminListOrders, adminSalesStats } = require("../controllers/orderController");
+const { adminListOrders, adminSalesStats, adminResetSalesStats } = require("../controllers/orderController");
 const { requireAdmin } = require("../middleware/auth");
 const upload = require("../middleware/upload");
 
@@ -25,5 +25,6 @@ router.delete("/products/:id", requireAdmin, deleteProduct);
 // Orders (protected, read-only for now)
 router.get("/orders", requireAdmin, adminListOrders);
 router.get("/stats", requireAdmin, adminSalesStats);
+router.post("/stats/reset", requireAdmin, adminResetSalesStats);
 
 module.exports = router;

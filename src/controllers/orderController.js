@@ -1,7 +1,7 @@
 const Order = require("../models/Order");
 const Milestone = require("../models/Milestone");
 const { generateOrderId } = require("../utils/orderId");
-const { checkMilestones, getSalesTotals, milestonesUpTo, nextMilestone } = require("../utils/milestones");
+const { checkMilestones, getSalesTotals, milestonesUpTo, nextMilestone, resetSales } = require("../utils/milestones");
 const {
   sendOrderConfirmationToCustomer,
   sendNewOrderAlertToOwner,
@@ -259,21 +259,34 @@ async function adminListOrders(req, res) {
   res.json(orders.map(serializeOrder));
 }
 
-// GET /api/admin/stats - total collected (all time and this month, Indian
-// time) plus milestone progress, for the summary at the top of the admin
-// pages. reachedAt is null for a milestone the server hasn't recorded yet.
-async function adminSalesStats(req, res) {
+// Total collected (since the last reset, and this month in Indian time) plus
+// milestone progress, for the summary at the top of the admin pages.
+// reachedAt is null for a milestone the server hasn't recorded yet; since is
+// null if the total has never been reset.
+async function salesStats() {
   const totals = await getSalesTotals();
   const reached = milestonesUpTo(totals.total);
   const records = await Milestone.find({ amount: { $in: reached } }, "amount createdAt").lean();
   const reachedAt = new Map(records.map((r) => [r.amount, r.createdAt]));
-  res.json({
+  return {
     ...totals,
     milestones: {
       reached: reached.map((amount) => ({ amount, reachedAt: reachedAt.get(amount) || null })),
       next: nextMilestone(totals.total),
     },
-  });
+  };
+}
+
+// GET /api/admin/stats
+async function adminSalesStats(req, res) {
+  res.json(await salesStats());
+}
+
+// POST /api/admin/stats/reset - start the total (and milestones) from zero
+// as of now. No orders are changed; earlier ones just stop counting.
+async function adminResetSalesStats(req, res) {
+  await resetSales();
+  res.json(await salesStats());
 }
 
 // PATCH /api/admin/orders/:id/status - move an order to a new stage
@@ -298,5 +311,6 @@ module.exports = {
   enhanceCustomImage,
   adminListOrders,
   adminSalesStats,
+  adminResetSalesStats,
   updateOrderStatus,
 };

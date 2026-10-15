@@ -245,12 +245,15 @@ async function sendCustomPosterAlertToOwner(order, size) {
 
 // The "special" celebration email for crossing a sales milestone (see
 // utils/milestones.js). milestones - every milestone being announced,
-// smallest first: usually one, more if a big order or the very first check
-// jumped past several at once. order - the order that pushed the total
-// over, or undefined when found on server start. Resolves true if sent.
-async function sendMilestoneEmail({ milestones, total, orders, next, order }) {
+// smallest first: usually one, more if a big order jumped past several at
+// once. order - the order that pushed the total over. since - when the
+// owner last reset the total to zero, or null. Resolves true if sent.
+async function sendMilestoneEmail({ milestones, total, orders, since, next, order }) {
   const top = milestones[milestones.length - 1];
   const earlier = milestones.slice(0, -1);
+  const period = since
+    ? `since ${new Date(since).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" })}`
+    : "so far";
   const subject = `XPOSTERS crossed ${formatRs(top)} in sales!`;
   const html = `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#0c0b09" style="background:#0c0b09;border-radius:8px">
@@ -260,8 +263,8 @@ async function sendMilestoneEmail({ milestones, total, orders, next, order }) {
         <p style="margin:0;font-size:17px">collected on XPOSTERS - congratulations!</p>
         ${earlier.length ? `<p style="margin:14px 0 0;font-size:13px;color:#a49a88">Also passed: ${earlier.map(formatRs).join(", ")}</p>` : ""}
         <p style="margin:28px 0 0;font-size:15px;line-height:1.7">
-          Total collected so far: <strong style="color:#e2bd6c">${formatRs(total)}</strong><br/>
-          Orders so far: <strong>${orders.toLocaleString("en-IN")}</strong>
+          Total collected ${period}: <strong style="color:#e2bd6c">${formatRs(total)}</strong><br/>
+          Orders ${period}: <strong>${orders.toLocaleString("en-IN")}</strong>
           ${order ? `<br/>Order ${order.orderId} (${formatRs(order.subtotal)}) took it over the line.` : ""}
         </p>
         <p style="margin:24px 0 0;font-size:13px;color:#a49a88">Next milestone: ${formatRs(next)} - ${formatRs(next - total)} to go.</p>
@@ -271,8 +274,8 @@ async function sendMilestoneEmail({ milestones, total, orders, next, order }) {
   const text =
     `XPOSTERS MILESTONE: ${formatRs(top)} collected - congratulations!\n` +
     (earlier.length ? `Also passed: ${earlier.map(formatRs).join(", ")}\n` : "") +
-    `\nTotal collected so far: ${formatRs(total)}\n` +
-    `Orders so far: ${orders.toLocaleString("en-IN")}\n` +
+    `\nTotal collected ${period}: ${formatRs(total)}\n` +
+    `Orders ${period}: ${orders.toLocaleString("en-IN")}\n` +
     (order ? `Order ${order.orderId} (${formatRs(order.subtotal)}) took it over the line.\n` : "") +
     `\nNext milestone: ${formatRs(next)} - ${formatRs(next - total)} to go.`;
 

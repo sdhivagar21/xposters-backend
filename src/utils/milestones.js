@@ -1,12 +1,15 @@
 // XPOSTERS - sales totals and milestone celebration emails.
 //
-// After every order (and once on server start, to catch up on anything
-// already passed) the total collected is checked against MILESTONES. Each
+// After every order the total collected is checked against MILESTONES. Each
 // milestone crossed gets a Milestone document and a one-time email to
 // MILESTONE_EMAIL - see sendMilestoneEmail in utils/email.js.
+//
+// The owner can reset the total to zero from the admin page (resetSales);
+// from then on only newer orders count, and milestones start over.
 
 const Order = require("../models/Order");
 const Milestone = require("../models/Milestone");
+const SalesReset = require("../models/SalesReset");
 const { sendMilestoneEmail } = require("./email");
 
 // Rs amounts that trigger a milestone email. After the last one, every
@@ -38,13 +41,23 @@ function startOfMonthIST(now = new Date()) {
   return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), 1) - IST_OFFSET_MS);
 }
 
+// When the latest reset happened, or null if the total has never been reset.
+async function countingSince() {
+  const latest = await SalesReset.findOne({}, "at").sort({ at: -1 }).lean();
+  return latest ? latest.at : null;
+}
+
 // Cancelled orders never brought money in, so they're left out of every
-// total. subtotal is the final amount charged, after discounts.
+// total, as are orders from before the latest reset. subtotal is the final
+// amount charged, after discounts.
 async function getSalesTotals() {
+  const since = await countingSince();
   const monthStart = startOfMonthIST();
   const inMonth = { $gte: ["$createdAt", monthStart] };
+  const match = { status: { $ne: "cancelled" } };
+  if (since) match.createdAt = { $gte: since };
   const [row] = await Order.aggregate([
-    { $match: { status: { $ne: "cancelled" } } },
+    { $match: match },
     {
       $group: {
         _id: null,
@@ -60,11 +73,12 @@ async function getSalesTotals() {
     orders: row ? row.orders : 0,
     month: row ? row.month : 0,
     monthOrders: row ? row.monthOrders : 0,
+    since,
   };
 }
 
 async function runMilestoneCheck(order) {
-  const { total, orders } = await getSalesTotals();
+  const { total, orders, since } = await getSalesTotals();
   const reached = milestonesUpTo(total);
   if (reached.length === 0) return;
 
@@ -87,6 +101,7 @@ async function runMilestoneCheck(order) {
     milestones: pending.map((m) => m.amount),
     total,
     orders,
+    since,
     next: nextMilestone(total),
     order,
   });
@@ -95,13 +110,37 @@ async function runMilestoneCheck(order) {
   }
 }
 
-// Orders can land at almost the same moment; running the checks one at a
-// time means two of them can never both email the same milestone.
+// Starts the total at zero from now. Milestone records are cleared so each
+// one is celebrated again when the new total reaches it.
+async function runReset() {
+  await SalesReset.create({ at: new Date() });
+  await Milestone.deleteMany({});
+}
+
+// Orders can land at almost the same moment; running the checks (and
+// resets) one at a time means two of them can never both email the same
+// milestone, and a check can't record old-total milestones after a reset.
 let queue = Promise.resolve();
-function checkMilestones(order) {
-  const run = queue.then(() => runMilestoneCheck(order));
+function enqueue(task) {
+  const run = queue.then(task);
   queue = run.catch(() => {});
   return run;
 }
 
-module.exports = { MILESTONES, milestonesUpTo, nextMilestone, startOfMonthIST, getSalesTotals, checkMilestones };
+function checkMilestones(order) {
+  return enqueue(() => runMilestoneCheck(order));
+}
+
+function resetSales() {
+  return enqueue(runReset);
+}
+
+module.exports = {
+  MILESTONES,
+  milestonesUpTo,
+  nextMilestone,
+  startOfMonthIST,
+  getSalesTotals,
+  checkMilestones,
+  resetSales,
+};
