@@ -4,8 +4,9 @@
 // milestone crossed gets a Milestone document and a one-time email to
 // MILESTONE_EMAIL - see sendMilestoneEmail in utils/email.js.
 //
-// The owner can reset the total to zero from the admin page (resetSales);
-// from then on only newer orders count, and milestones start over.
+// The owner can start again from zero from the admin page (resetSales): all
+// orders are deleted, the total counts from then on, and milestones start
+// over.
 
 const Order = require("../models/Order");
 const Milestone = require("../models/Milestone");
@@ -110,11 +111,14 @@ async function runMilestoneCheck(order) {
   }
 }
 
-// Starts the total at zero from now. Milestone records are cleared so each
-// one is celebrated again when the new total reaches it.
+// Starts again from zero: permanently deletes every order, and clears the
+// milestone records so each one is celebrated again when the new total
+// reaches it. Resolves to the number of orders deleted.
 async function runReset() {
   await SalesReset.create({ at: new Date() });
+  const { deletedCount } = await Order.deleteMany({});
   await Milestone.deleteMany({});
+  return deletedCount;
 }
 
 // Orders can land at almost the same moment; running the checks (and

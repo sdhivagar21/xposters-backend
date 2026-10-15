@@ -54,7 +54,7 @@ login/product-management, with images stored on Cloudinary.
 - `DELETE /api/admin/products/:id` — delete a product (also removes its Cloudinary image)
 - `GET /api/admin/orders` — all orders, newest first
 - `GET /api/admin/stats` — total collected (since the last reset, and this month), order counts, and sales-milestone progress
-- `POST /api/admin/stats/reset` — start the sales total and milestones from zero as of now (orders are kept)
+- `POST /api/admin/stats/reset` — body `{ "confirm": "DELETE" }`: permanently deletes all orders and starts the sales total and milestones from zero
 
 ## Deploying to Render
 

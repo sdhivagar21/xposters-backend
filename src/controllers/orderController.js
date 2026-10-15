@@ -282,11 +282,15 @@ async function adminSalesStats(req, res) {
   res.json(await salesStats());
 }
 
-// POST /api/admin/stats/reset - start the total (and milestones) from zero
-// as of now. No orders are changed; earlier ones just stop counting.
+// POST /api/admin/stats/reset { confirm: "DELETE" } - permanently deletes
+// every order and starts the total (and milestones) from zero. The confirm
+// word means a stray or replayed request can't wipe the order history.
 async function adminResetSalesStats(req, res) {
-  await resetSales();
-  res.json(await salesStats());
+  if (req.body?.confirm !== "DELETE") {
+    return res.status(400).json({ message: 'Send { confirm: "DELETE" } to delete all orders' });
+  }
+  const deletedOrders = await resetSales();
+  res.json({ ...(await salesStats()), deletedOrders });
 }
 
 // PATCH /api/admin/orders/:id/status - move an order to a new stage
