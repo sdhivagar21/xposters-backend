@@ -43,7 +43,7 @@ function scaleFor(w, h, size, fit) {
 // Set AI_UPSCALE=off in the environment to turn it off.
 //
 // Monthly limit: at most AI_MONTHLY_LIMIT different images a month (default
-// 100) go through Cloudinary's AI, so the free plan's credits can't run out
+// 250) go through Cloudinary's AI, so the free plan's credits can't run out
 // by surprise. Past the limit, customers get the classic enhance and the
 // original is kept, and the admin "Print files" page makes the sharp AI
 // version for free on the admin's own computer instead.
@@ -52,7 +52,7 @@ const AI_MIN_SCALE = 2.5; // below this the classic enhance is already sharp
 
 function aiMonthlyLimit() {
   const raw = process.env.AI_MONTHLY_LIMIT;
-  if (raw === undefined || String(raw).trim() === "") return 100;
+  if (raw === undefined || String(raw).trim() === "") return 250;
   return Math.max(0, Math.floor(Number(raw)) || 0);
 }
 
