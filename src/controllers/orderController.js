@@ -8,7 +8,19 @@ const {
   sendCustomPosterConfirmationToCustomer,
   sendCustomPosterAlertToOwner,
 } = require("../utils/email");
-const { enhanceImage } = require("../utils/enhanceImage");
+const {
+  enhanceImage,
+  getAiUsage,
+  makePrintFile,
+  normalizeLink,
+  isPinterestUrl,
+  resolvePinterestImage,
+  orderPrintLinks,
+  validOrderSignature,
+  printFileName,
+  originalCloudinaryUrl,
+  createZipWriter,
+} = require("../utils/enhanceImage");
 const cloudinary = require("../config/cloudinary");
 const { getSizeBySlug, getMinPixelsForSize, computeOrderTotals, normalizeItemPrices } = require("../data/categories");
 const {
@@ -18,6 +30,7 @@ const {
 } = require("../utils/cloudinaryUpload");
 
 const mongoose = require("mongoose");
+const sharp = require("sharp");
 
 // Cleans client-sent order items: a real product id OR a hosted custom poster
 // (its Cloudinary id must live in custom-orders), never arbitrary values.
@@ -31,11 +44,15 @@ function sanitizeItems(items) {
       item.width = Number(item.width) > 0 ? Math.floor(Number(item.width)) : undefined;
       item.height = Number(item.height) > 0 ? Math.floor(Number(item.height)) : undefined;
       item.notes = typeof item.notes === "string" ? item.notes.slice(0, 500) : undefined;
+      if (!(typeof item.sourceImage === "string" && /^https:\/\/res\.cloudinary\.com\/[\w-]+\/image\/upload\/(?:v\d+\/)?custom-orders-src\/[\w.-]+$/.test(item.sourceImage))) {
+        delete item.sourceImage;
+      }
     } else {
       delete item.imagePublicId;
       delete item.width;
       delete item.height;
       delete item.notes;
+      delete item.sourceImage;
     }
     delete item.imageLink;
     if (typeof item.image !== "string" || !item.image.startsWith("https://res.cloudinary.com/")) delete item.image;
@@ -117,23 +134,29 @@ async function downloadHostedImage(url) {
 // uploaded file or a pasted link, enhances it to print quality for `size`,
 // and hosts the enhanced version on Cloudinary. The raw original is only a
 // temporary stepping stone for links and is deleted straight away.
-async function enhanceToCloudinary({ file, imageLink, size }) {
-  let sourceBuffer;
-  if (file) {
-    sourceBuffer = file.buffer;
-  } else {
-    let remote;
-    try {
-      remote = await uploadRemoteUrlToCloudinary(imageLink.trim(), { folder: "custom-orders-src" });
-      sourceBuffer = await downloadHostedImage(remote.secure_url);
-    } catch (err) {
-      const e = new Error("Couldn't load that image link - check the URL or upload the file instead.");
-      e.status = 400;
-      throw e;
-    } finally {
-      if (remote) deleteFromCloudinary(remote.public_id);
-    }
+// The image behind an uploaded file or a pasted link. Pinterest pin links
+// (pin.it/..., pinterest.com/pin/...) are pages, not images - they're resolved
+// to the pin's full-size original first. Any other link is fetched by
+// Cloudinary, not by this server.
+async function loadSourceImage({ file, imageLink }) {
+  if (file) return file.buffer;
+  const link = normalizeLink(imageLink);
+  if (isPinterestUrl(link)) return (await resolvePinterestImage(link)).buffer;
+  let remote;
+  try {
+    remote = await uploadRemoteUrlToCloudinary(link, { folder: "custom-orders-src" });
+    return await downloadHostedImage(remote.secure_url);
+  } catch (err) {
+    const e = new Error("Couldn't load that image link - check the URL or upload the file instead.");
+    e.status = 400;
+    throw e;
+  } finally {
+    if (remote) deleteFromCloudinary(remote.public_id);
   }
+}
+
+async function enhanceToCloudinary({ file, imageLink, size }) {
+  const sourceBuffer = await loadSourceImage({ file, imageLink });
 
   let enhanced;
   try {
@@ -146,7 +169,23 @@ async function enhanceToCloudinary({ file, imageLink, size }) {
   }
 
   const hosted = await uploadBufferToCloudinary(enhanced.buffer, { folder: "custom-orders" });
-  return { hosted, enhanced };
+  // A small image that couldn't go through the AI (monthly limit reached,
+  // or AI unavailable): keep the customer's original too, so the admin can
+  // make the sharp AI print file later for free on their own computer.
+  let sourceUrl;
+  if (enhanced.aiStatus && enhanced.aiStatus !== "used") {
+    try {
+      const mime = { png: "image/png", webp: "image/webp", gif: "image/gif" }[(await sharp(sourceBuffer).metadata()).format] || "image/jpeg";
+      const kept = await cloudinary.uploader.upload(`data:${mime};base64,${sourceBuffer.toString("base64")}`, {
+        folder: "custom-orders-src",
+        resource_type: "image",
+      });
+      sourceUrl = kept.secure_url;
+    } catch (err) {
+      console.error("[custom] couldn't keep the original:", err.message);
+    }
+  }
+  return { hosted, enhanced, sourceUrl };
 }
 
 // POST /api/orders/custom/enhance - the live preview step. Returns the
@@ -160,8 +199,10 @@ async function enhanceCustomImage(req, res) {
     return res.status(400).json({ message: "Upload an image or paste a link to one." });
   }
   try {
-    const { hosted, enhanced } = await enhanceToCloudinary({ file: req.file, imageLink, size });
+    const { hosted, enhanced, sourceUrl } = await enhanceToCloudinary({ file: req.file, imageLink, size });
     res.json({
+      sourceUrl,
+      aiStatus: enhanced.aiStatus,
       url: hosted.secure_url,
       publicId: hosted.public_id,
       width: enhanced.width,
@@ -169,6 +210,7 @@ async function enhanceCustomImage(req, res) {
       originalWidth: enhanced.originalWidth,
       originalHeight: enhanced.originalHeight,
       upscaled: enhanced.upscaled,
+      ai: enhanced.ai,
       dpi: enhanced.dpi,
     });
   } catch (err) {
@@ -212,8 +254,8 @@ async function createCustomOrder(req, res) {
       const r = await cloudinary.api.resource(enhancedPublicId);
       uploadResult = { secure_url: r.secure_url, public_id: r.public_id, width: r.width, height: r.height };
     } else {
-      const { hosted } = await enhanceToCloudinary({ file, imageLink, size });
-      uploadResult = hosted;
+      const { hosted, sourceUrl } = await enhanceToCloudinary({ file, imageLink, size });
+      uploadResult = { ...hosted, sourceUrl };
     }
   } catch (err) {
     return res.status(err.status || 400).json({
@@ -231,6 +273,7 @@ async function createCustomOrder(req, res) {
         image: uploadResult.secure_url,
         imagePublicId: uploadResult.public_id,
         imageLink: imageLink && imageLink.trim() ? imageLink.trim() : undefined,
+        sourceImage: uploadResult.sourceUrl,
         size: size.slug,
         width: uploadResult.width,
         height: uploadResult.height,
@@ -253,10 +296,135 @@ async function createCustomOrder(req, res) {
   checkMilestones(order).catch((err) => console.error("[milestones] check failed:", err.message));
 }
 
-// GET /api/admin/orders
+// GET /api/admin/orders - each order also carries its print-file download
+// links (one per poster + a ZIP of all), same as in the owner's email.
 async function adminListOrders(req, res) {
   const orders = await Order.find({}).sort({ createdAt: -1 });
-  res.json(orders.map(serializeOrder));
+  res.json(orders.map((o) => ({ ...serializeOrder(o), downloads: orderPrintLinks(o) })));
+}
+
+// Print files are CPU-heavy to build, so cap them per IP as well.
+const printHits = new Map();
+function printLimitReached(ip, max = 40) {
+  const now = Date.now();
+  const recent = (printHits.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
+  if (recent.length >= max) return true;
+  recent.push(now);
+  printHits.set(ip, recent);
+  return false;
+}
+
+// One order item's print-ready file: its image at 300 DPI for the size that
+// was ordered (A3/A4/A5), enhanced if the original is smaller than that.
+async function orderItemPrintFile(item) {
+  const src = originalCloudinaryUrl(item.image);
+  if (!src.startsWith("https://res.cloudinary.com/")) throw Object.assign(new Error("No image on this item"), { status: 404 });
+  const size = getSizeBySlug(item.size) || getSizeBySlug("a4");
+  return makePrintFile(await downloadHostedImage(src), size);
+}
+
+// GET /api/orders/print/:id[/:item]?sig=... - the "Download" buttons in the
+// owner's order email and on the admin orders page. With an item number it
+// sends that poster's print file; without one, a ZIP of every poster in the
+// order. The signature (made when the email/page was built) stands in for a
+// login, so the link works straight from the inbox.
+async function downloadOrderPrint(req, res) {
+  const { id, item: itemNo } = req.params;
+  if (!mongoose.isValidObjectId(id) || !validOrderSignature(id, req.query.sig)) {
+    return res.status(403).send("This download link isn't valid.");
+  }
+  if (printLimitReached(req.ip)) return res.status(429).send("Too many downloads - please wait a few minutes.");
+  const order = await Order.findById(id);
+  if (!order) return res.status(404).send("Order not found - it may have been deleted.");
+
+  if (itemNo) {
+    const index = Number(itemNo) - 1;
+    const item = order.items[index];
+    if (!item) return res.status(404).send("That poster isn't in this order.");
+    try {
+      const file = await orderItemPrintFile(item);
+      res.set({
+        "Content-Type": "image/jpeg",
+        "Content-Disposition": `attachment; filename="${printFileName(order, item, index)}"`,
+        "Cache-Control": "private, max-age=3600",
+      });
+      return res.send(file.buffer);
+    } catch (err) {
+      if (err.status === 404) return res.status(404).send("This poster has no stored image to download.");
+      console.error("[print] item failed:", err.message);
+      return res.status(502).send("Couldn't build that print file right now - please try again.");
+    }
+  }
+
+  // Whole order as one ZIP, built and streamed one poster at a time.
+  res.set({
+    "Content-Type": "application/zip",
+    "Content-Disposition": `attachment; filename="${order.orderId}_print-files.zip"`,
+    "Cache-Control": "private, no-store",
+  });
+  const write = (chunk) =>
+    new Promise((resolve) => {
+      if (res.write(chunk)) resolve();
+      else res.once("drain", resolve);
+    });
+  const zip = createZipWriter(write);
+  const failed = [];
+  for (let i = 0; i < order.items.length; i++) {
+    if (res.destroyed) return;
+    const item = order.items[i];
+    try {
+      const file = await orderItemPrintFile(item);
+      await zip.add(printFileName(order, item, i), file.buffer);
+    } catch (err) {
+      if (err.status !== 404) console.error("[print] zip item failed:", err.message);
+      failed.push(`${i + 1}. ${item.name} - ${item.image || "no image"}`);
+    }
+  }
+  if (failed.length) {
+    await zip.add("COULD-NOT-BUILD.txt", Buffer.from(`These posters couldn't be built - download them one by one instead:\r\n${failed.join("\r\n")}\r\n`));
+  }
+  await zip.finish();
+  res.end();
+}
+
+// POST /api/admin/print (admin only) - the admin "Print files" tool: an
+// uploaded image or pasted link (Pinterest pins too) comes back as a
+// print-ready JPEG at 300 DPI for the chosen size, enhanced as needed.
+// Body: size (a3/a4/a5), fit ("" keep shape | "fill" | "fit"), image or
+// imageLink, ai ("local" = the browser already AI-upscaled this image on the
+// admin's computer, so only finish it here).
+async function adminMakePrintFile(req, res) {
+  const size = getSizeBySlug(req.body.size);
+  if (!size) return res.status(400).json({ message: "Choose A3, A4 or A5." });
+  const fit = ["fill", "fit"].includes(req.body.fit) ? req.body.fit : undefined;
+  if (!req.file && !(req.body.imageLink && req.body.imageLink.trim())) {
+    return res.status(400).json({ message: "Upload an image or paste a link to one." });
+  }
+  const local = req.body.ai === "local";
+  try {
+    const source = await loadSourceImage({ file: req.file, imageLink: req.body.imageLink });
+    const out = await enhanceImage(source, size, { fit, forDownload: true, ai: !local, cleanSource: local });
+    res.set({
+      "Content-Type": "image/jpeg",
+      "Content-Disposition": `attachment; filename="xposters_${size.label}_${out.width}x${out.height}.jpg"`,
+      "X-Print-Info": JSON.stringify({
+        size: size.slug,
+        width: out.width,
+        height: out.height,
+        originalWidth: out.originalWidth,
+        originalHeight: out.originalHeight,
+        upscaled: out.upscaled,
+        ai: out.ai || local,
+        aiStatus: local ? "local" : out.aiStatus,
+        dpi: out.dpi,
+        bytes: out.buffer.length,
+      }),
+    });
+    res.send(out.buffer);
+  } catch (err) {
+    if (!err.status) console.error("[print] admin tool failed:", err.message);
+    res.status(err.status || 500).json({ message: err.status ? err.message : "Couldn't process that image - please try a different one." });
+  }
 }
 
 // Total collected (since the last reset, and this month in Indian time) plus
@@ -309,10 +477,38 @@ async function updateOrderStatus(req, res) {
   res.json(serializeOrder(order));
 }
 
+// POST /api/admin/print/source (admin only) - the original image behind a
+// link (Pinterest pins resolved to the full-size original), for the free
+// AI that runs in the admin's browser. Body: imageLink.
+async function adminPrintSource(req, res) {
+  const link = req.body && req.body.imageLink;
+  if (!link || !String(link).trim()) return res.status(400).json({ message: "Paste a link to an image." });
+  try {
+    const normalized = normalizeLink(link);
+    const buffer = /^https:\/\/res\.cloudinary\.com\//.test(normalized)
+      ? await downloadHostedImage(normalized)
+      : await loadSourceImage({ imageLink: normalized });
+    const format = (await sharp(buffer).metadata()).format;
+    res.set({ "Content-Type": `image/${format === "jpeg" ? "jpeg" : format || "jpeg"}`, "Cache-Control": "private, no-store" });
+    res.send(buffer);
+  } catch (err) {
+    res.status(err.status || 400).json({ message: err.status ? err.message : "Couldn't load that image link." });
+  }
+}
+
+// GET /api/admin/ai-usage - Cloudinary AI upscales used this month vs the limit.
+async function adminAiUsage(req, res) {
+  res.json(await getAiUsage());
+}
+
 module.exports = {
+  adminPrintSource,
+  adminAiUsage,
   createOrder,
   createCustomOrder,
   enhanceCustomImage,
+  downloadOrderPrint,
+  adminMakePrintFile,
   adminListOrders,
   adminSalesStats,
   adminResetSalesStats,

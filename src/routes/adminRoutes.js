@@ -6,7 +6,14 @@ const {
   updateProduct,
   deleteProduct,
 } = require("../controllers/adminProductController");
-const { adminListOrders, adminSalesStats, adminResetSalesStats } = require("../controllers/orderController");
+const {
+  adminListOrders,
+  adminSalesStats,
+  adminResetSalesStats,
+  adminMakePrintFile,
+  adminPrintSource,
+  adminAiUsage,
+} = require("../controllers/orderController");
 const { requireAdmin } = require("../middleware/auth");
 const upload = require("../middleware/upload");
 
@@ -26,5 +33,10 @@ router.delete("/products/:id", requireAdmin, deleteProduct);
 router.get("/orders", requireAdmin, adminListOrders);
 router.get("/stats", requireAdmin, adminSalesStats);
 router.post("/stats/reset", requireAdmin, adminResetSalesStats);
+
+// Print files tool: upload / link -> enhanced A3/A4/A5 JPEG to download
+router.post("/print", requireAdmin, upload.large.single("image"), adminMakePrintFile);
+router.post("/print/source", requireAdmin, adminPrintSource);
+router.get("/ai-usage", requireAdmin, adminAiUsage);
 
 module.exports = router;

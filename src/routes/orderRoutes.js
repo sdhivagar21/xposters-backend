@@ -1,6 +1,6 @@
 const express = require("express");
 const upload = require("../middleware/upload");
-const { createOrder, createCustomOrder, enhanceCustomImage } = require("../controllers/orderController");
+const { createOrder, createCustomOrder, enhanceCustomImage, downloadOrderPrint } = require("../controllers/orderController");
 
 const router = express.Router();
 
@@ -20,5 +20,8 @@ function limitEnhance(req, res, next) {
 
 router.post("/custom/enhance", limitEnhance, upload.large.single("image"), enhanceCustomImage);
 router.post("/custom", upload.large.single("image"), createCustomOrder);
+// Print-file downloads (signed links from the owner's email / admin page).
+router.get("/print/:id", downloadOrderPrint);
+router.get("/print/:id/:item", downloadOrderPrint);
 
 module.exports = router;

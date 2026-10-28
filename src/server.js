@@ -33,6 +33,9 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
       callback(new Error(`CORS: origin ${origin} is not allowed`));
     },
+    // Lets the admin "Print files" tool read the size/quality details that
+    // come back alongside the image.
+    exposedHeaders: ["X-Print-Info"],
   })
 );
 // Gzip/brotli-compresses every JSON response before it goes out - product

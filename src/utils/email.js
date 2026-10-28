@@ -17,6 +17,7 @@
 // quietly skips sending instead of breaking order placement.
 
 const { Resend } = require("resend");
+const { orderPrintLinks } = require("./enhanceImage");
 
 const { RESEND_API_KEY, EMAIL_FROM, OWNER_EMAIL } = process.env;
 
@@ -69,24 +70,63 @@ function emailImageUrl(url, width = 160) {
   return url.slice(0, insertAt) + `f_jpg,q_70,w_${width}/` + url.slice(insertAt);
 }
 
-function formatItemsListHtml(items) {
+// A tappable button (tables/inline styles so it renders in every mail app).
+function buttonHtml(href, label, big = false) {
+  const pad = big ? "12px 20px" : "7px 12px";
+  const font = big ? "15px" : "13px";
+  return `<a href="${href}" style="display:inline-block;margin-top:6px;padding:${pad};background:#c9a24d;color:#0c0b09;text-decoration:none;border-radius:6px;font-weight:bold;font-size:${font};font-family:Arial,Helvetica,sans-serif">${label}</a>`;
+}
+
+// Owner emails: a "Download all" ZIP button for the whole order (shown when
+// it has more than one poster) plus a note that the first click can be slow.
+function formatDownloadAllHtml(order, links) {
+  if (!links) return "";
+  const n = order.items.length;
+  return `<p style="margin:14px 0">${
+    n > 1 ? buttonHtml(links.all, `&#11015; Download all ${n} print files (ZIP)`, true) : buttonHtml(links.items[0], "&#11015; Download print file", true)
+  }<br/><span style="font-size:12px;color:#777">Print-ready JPEGs at 300 DPI for the ordered size (A3 / A4 / A5), enhanced where needed. The first download can take up to a minute while the server wakes up.</span></p>`;
+}
+
+// Small custom images ordered after the month's AI limit was used: a link
+// that opens the admin "Print files" page on that image, where the free AI
+// on the admin's computer makes the sharp print file.
+function sharperLink(item) {
+  const site = String(process.env.CLIENT_URL || "").split(",")[0].trim().replace(/\/+$/, "");
+  if (!item.sourceImage || !site) return "";
+  return `${site}/admin/print?src=${encodeURIComponent(item.sourceImage)}&size=${encodeURIComponent(item.size || "a4")}&engine=local`;
+}
+
+function formatItemsListHtml(items, links) {
   const rows = items
-    .map((item) => {
+    .map((item, i) => {
       const img = emailImageUrl(item.image);
       const thumb = img
         ? `<img src="${img}" alt="${item.name}" width="80" style="display:block;width:80px;height:auto;border-radius:6px;border:1px solid #ddd" />`
         : "";
       return `<tr>
         <td style="padding:8px 12px 8px 0;vertical-align:middle">${thumb}</td>
-        <td style="padding:8px 0;vertical-align:middle"><strong>${item.name}</strong><br/>${item.size ? `Size: ${String(item.size).toUpperCase()}<br/>` : ""}Qty ${item.qty} - Rs ${item.qty * item.price}${item.width ? `<br/>Print file: ${item.width}x${item.height}px` : ""}${item.notes ? `<br/>Notes: ${String(item.notes).replace(/[<>&]/g, "")}` : ""}</td>
+        <td style="padding:8px 0;vertical-align:middle"><strong>${item.name}</strong><br/>${item.size ? `Size: ${String(item.size).toUpperCase()}<br/>` : ""}Qty ${item.qty} - Rs ${item.qty * item.price}${item.width ? `<br/>Print file: ${item.width}x${item.height}px` : ""}${item.notes ? `<br/>Notes: ${String(item.notes).replace(/[<>&]/g, "")}` : ""}${links && links.items[i] ? `<br/>${buttonHtml(links.items[i], `&#11015; Download ${String(item.size || "a4").toUpperCase()} print file`)}` : ""}${
+        item.sourceImage
+          ? `<br/><span style="font-size:12px;color:#b45309">Small image - this month's AI limit was used, so it got the normal enhance.</span>${
+              sharperLink(item) ? `<br/>${buttonHtml(sharperLink(item), "&#10024; Make it sharper (free AI on your computer)")}` : ""
+            }`
+          : ""
+      }</td>
       </tr>`;
     })
     .join("");
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${rows}</table>`;
 }
 
-function formatItemsListText(items) {
-  return items.map((item) => `- ${item.name} x${item.qty} (Rs ${item.qty * item.price})${item.notes ? ` - Notes: ${item.notes}` : ""}`).join("\n");
+function formatItemsListText(items, links) {
+  return items
+    .map(
+      (item, i) =>
+        `- ${item.name} x${item.qty} (Rs ${item.qty * item.price})${item.notes ? ` - Notes: ${item.notes}` : ""}` +
+        (links && links.items[i] ? `\n  Download ${String(item.size || "a4").toUpperCase()} print file: ${links.items[i]}` : "") +
+        (sharperLink(item) ? `\n  Small image - make it sharper with the free AI: ${sharperLink(item)}` : "")
+    )
+    .join("\n");
 }
 
 // Resolves true once Resend accepted the email, false if it was skipped or
@@ -159,9 +199,11 @@ async function sendNewOrderAlertToOwner(order) {
     return;
   }
   const subject = `New order ${order.orderId} - Rs ${order.subtotal}`;
+  const links = orderPrintLinks(order);
   const html = `
     <p><strong>New order ${order.orderId}!</strong></p>
-    ${formatItemsListHtml(order.items)}
+    ${formatDownloadAllHtml(order, links)}
+    ${formatItemsListHtml(order.items, links)}
     ${formatDiscountLineHtml(order)}
     <p><strong>Total: Rs ${order.subtotal}</strong></p>
     <p>Customer: ${order.customer.name}<br/>
@@ -171,7 +213,8 @@ async function sendNewOrderAlertToOwner(order) {
   `;
   const text =
     `New order ${order.orderId}!\n\n` +
-    `${formatItemsListText(order.items)}\n\n` +
+    (order.items.length > 1 ? `Download all print files (ZIP): ${links.all}\n\n` : "") +
+    `${formatItemsListText(order.items, links)}\n\n` +
     `${formatDiscountLineText(order)}` +
     `Total: Rs ${order.subtotal}\n\n` +
     `Customer: ${order.customer.name}\n` +
@@ -220,7 +263,9 @@ async function sendCustomPosterAlertToOwner(order, size) {
     <p>Size: ${size.label} (${size.dimensions})<br/>
     Price: Rs ${order.subtotal}</p>
     <p><img src="${emailImageUrl(item.image, 480)}" alt="Poster image" width="320" style="display:block;width:320px;height:auto;border-radius:6px;border:1px solid #ddd" /></p>
-    <p><a href="${item.image}">Open full-size image</a></p>
+    <p>${buttonHtml(orderPrintLinks(order).items[0], `&#11015; Download ${size.label} print file`, true)}<br/>
+    <a href="${item.image}" style="font-size:12px">Open full-size image</a></p>
+    ${sharperLink(item) ? `<p><span style="font-size:12px;color:#b45309">Small image - this month's AI limit was used, so it got the normal enhance.</span><br/>${buttonHtml(sharperLink(item), "&#10024; Make it sharper (free AI on your computer)")}</p>` : ""}
     ${item.width && item.height ? `<p>Image: ${item.width} x ${item.height}px</p>` : ""}
     <p>Customer: ${order.customer.name}<br/>
     Phone: ${order.customer.phone}<br/>
@@ -232,6 +277,7 @@ async function sendCustomPosterAlertToOwner(order, size) {
     `New customizable poster order ${order.orderId}!\n\n` +
     `Size: ${size.label} (${size.dimensions})\n` +
     `Price: Rs ${order.subtotal}\n\n` +
+    `Download ${size.label} print file: ${orderPrintLinks(order).items[0]}\n` +
     `Image: ${item.image}\n` +
     (item.width && item.height ? `Dimensions: ${item.width} x ${item.height}px\n\n` : "\n") +
     `Customer: ${order.customer.name}\n` +

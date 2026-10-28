@@ -18,6 +18,10 @@ const orderItemSchema = new mongoose.Schema(
     width: { type: Number }, // pixel width of the submitted image
     height: { type: Number }, // pixel height of the submitted image
     notes: { type: String }, // customer's notes on their custom poster
+    // The customer's original image, kept only when it was small and the AI
+    // upscale couldn't run at the time (monthly limit) - the admin can make
+    // a sharp AI print file from it later (admin "Print files" page).
+    sourceImage: { type: String },
     qty: { type: Number, required: true, min: 1 },
   },
   { _id: false }
