@@ -56,7 +56,21 @@ login/product-management, with images stored on Cloudinary.
 - `GET /api/admin/stats` — total collected (since the last reset, and this month), order counts, and sales-milestone progress
 - `POST /api/admin/stats/reset` — body `{ "confirm": "DELETE" }`: permanently deletes all orders and starts the sales total and milestones from zero
 
-## Deploying to Render
+## Deploying to Vercel (current host, free)
+
+The live backend runs on Vercel as the `xposters-backend` project
+(Express preset - `src/server.js` exports the app, Vercel turns it into one
+function; `vercel.json` pins it to the Mumbai region).
+
+1. On [vercel.com](https://vercel.com/new), import this repo. Vercel detects **Express**.
+2. Add all the variables from `.env.example` under Environment Variables (no `PORT` needed).
+3. Deploy. Every push to `main` redeploys automatically.
+4. MongoDB Atlas → Network Access must allow `0.0.0.0/0` (Vercel has no fixed IP).
+
+Limits on the free plan: 4.5 MB per upload (the frontend shrinks images
+before sending), 5 minutes per request, 4 CPU-hours a month.
+
+## Deploying to Render (previous host)
 
 1. Push this `xposters-backend` folder to its own GitHub repo (separate from the frontend).
 2. On [render.com](https://render.com), New → Web Service → connect the repo.
