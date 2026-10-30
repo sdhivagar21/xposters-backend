@@ -31,6 +31,7 @@ const {
 
 const mongoose = require("mongoose");
 const sharp = require("sharp");
+const { inBackground } = require("../utils/background");
 
 // Cleans client-sent order items: a real product id OR a hosted custom poster
 // (its Cloudinary id must live in custom-orders), never arbitrary values.
@@ -115,11 +116,26 @@ async function createOrder(req, res) {
 
   // Fire the email notifications after responding, so a slow or failed
   // send never delays or breaks placing the order for the customer.
-  sendOrderConfirmationToCustomer(order).catch(() => {});
-  sendNewOrderAlertToOwner(order).catch(() => {});
-  checkMilestones(order).catch((err) => console.error("[milestones] check failed:", err.message));
+  inBackground(
+    sendOrderConfirmationToCustomer(order),
+    sendNewOrderAlertToOwner(order),
+    checkMilestones(order).catch((err) => console.error("[milestones] check failed:", err.message))
+  );
 }
 
+
+// Sends a file in chunks rather than in one go: streamed responses aren't
+// held to Vercel's 4.5 MB limit for a single response body, and big print
+// files (A3, ZIPs) are larger than that.
+async function sendStreamed(res, buffer) {
+  const CHUNK = 256 * 1024;
+  for (let i = 0; i < buffer.length; i += CHUNK) {
+    if (res.destroyed) return;
+    const ok = res.write(buffer.subarray(i, i + CHUNK));
+    if (!ok) await new Promise((resolve) => res.once("drain", resolve));
+  }
+  res.end();
+}
 
 // Downloads an image Cloudinary is hosting (we only ever fetch URLs that
 // Cloudinary itself produced, never a customer-supplied host directly, so a
@@ -291,9 +307,11 @@ async function createCustomOrder(req, res) {
   // orders - a slow or failed send should never delay or break the
   // submission. The customer gets a confirmation too, same as a regular
   // order, so they're not left wondering whether it went through.
-  sendCustomPosterConfirmationToCustomer(order, size).catch(() => {});
-  sendCustomPosterAlertToOwner(order, size).catch(() => {});
-  checkMilestones(order).catch((err) => console.error("[milestones] check failed:", err.message));
+  inBackground(
+    sendCustomPosterConfirmationToCustomer(order, size),
+    sendCustomPosterAlertToOwner(order, size),
+    checkMilestones(order).catch((err) => console.error("[milestones] check failed:", err.message))
+  );
 }
 
 // GET /api/admin/orders - each order also carries its print-file download
@@ -348,7 +366,7 @@ async function downloadOrderPrint(req, res) {
         "Content-Disposition": `attachment; filename="${printFileName(order, item, index)}"`,
         "Cache-Control": "private, max-age=3600",
       });
-      return res.send(file.buffer);
+      return sendStreamed(res, file.buffer);
     } catch (err) {
       if (err.status === 404) return res.status(404).send("This poster has no stored image to download.");
       console.error("[print] item failed:", err.message);
@@ -420,7 +438,7 @@ async function adminMakePrintFile(req, res) {
         bytes: out.buffer.length,
       }),
     });
-    res.send(out.buffer);
+    await sendStreamed(res, out.buffer);
   } catch (err) {
     if (!err.status) console.error("[print] admin tool failed:", err.message);
     res.status(err.status || 500).json({ message: err.status ? err.message : "Couldn't process that image - please try a different one." });
@@ -490,7 +508,7 @@ async function adminPrintSource(req, res) {
       : await loadSourceImage({ imageLink: normalized });
     const format = (await sharp(buffer).metadata()).format;
     res.set({ "Content-Type": `image/${format === "jpeg" ? "jpeg" : format || "jpeg"}`, "Cache-Control": "private, no-store" });
-    res.send(buffer);
+    await sendStreamed(res, buffer);
   } catch (err) {
     res.status(err.status || 400).json({ message: err.status ? err.message : "Couldn't load that image link." });
   }

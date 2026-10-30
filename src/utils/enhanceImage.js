@@ -463,9 +463,12 @@ function validOrderSignature(orderMongoId, sig) {
   return got.length === want.length && crypto.timingSafeEqual(got, want);
 }
 
-// The backend's own public address (Render sets RENDER_EXTERNAL_URL).
+// The backend's own public address (Vercel sets VERCEL_PROJECT_PRODUCTION_URL,
+// Render sets RENDER_EXTERNAL_URL).
 function apiBaseUrl() {
-  const base = process.env.PUBLIC_API_URL || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`;
+  const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`;
+  const base =
+    process.env.PUBLIC_API_URL || vercel || process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 4000}`;
   return base.replace(/\/+$/, "").replace(/\/api$/, "");
 }
 
