@@ -76,6 +76,10 @@ function serializeOrder(doc) {
     discountPercent: o.discountPercent || 0,
     discountAmount: o.discountAmount || 0,
     packDealAmount: o.packDealAmount || 0,
+    b2g1Amount: o.b2g1Amount || 0,
+    itemsTotal: o.itemsTotal ?? o.subtotal,
+    deliveryOption: o.deliveryOption || "",
+    deliveryFee: o.deliveryFee || 0,
     status: o.status,
     createdAt: o.createdAt,
   };
@@ -83,11 +87,11 @@ function serializeOrder(doc) {
 
 // POST /api/orders - the "place order" step. No real payment gateway yet;
 // this is where one would be called before the order is confirmed. The
-// subtotal (and any bulk-poster discount) is computed here from `items`
-// rather than trusted from req.body, so a tampered request can't change
-// what actually gets charged/recorded.
+// subtotal (the deal, and the delivery fee for the chosen deliveryOption) is
+// computed here from `items` rather than trusted from req.body, so a
+// tampered request can't change what actually gets charged/recorded.
 async function createOrder(req, res) {
-  const { customer } = req.body;
+  const { customer, deliveryOption } = req.body;
   let { items } = req.body;
 
   if (!customer || !items || !Array.isArray(items) || items.length === 0) {
@@ -99,16 +103,20 @@ async function createOrder(req, res) {
   }
   items = sanitizeItems(items);
 
-  const { subtotal, discountPercent, discountAmount, packDealAmount } = computeOrderTotals(items);
+  const totals = computeOrderTotals(items, deliveryOption);
 
   const order = await Order.create({
     orderId: generateOrderId(),
     customer,
     items: normalizeItemPrices(items),
-    subtotal,
-    discountPercent,
-    discountAmount,
-    packDealAmount,
+    subtotal: totals.subtotal,
+    discountPercent: totals.discountPercent,
+    discountAmount: totals.discountAmount,
+    packDealAmount: totals.packDealAmount,
+    b2g1Amount: totals.b2g1Amount,
+    itemsTotal: totals.itemsTotal,
+    deliveryOption: totals.deliveryOption,
+    deliveryFee: totals.deliveryFee,
     status: "placed",
   });
 

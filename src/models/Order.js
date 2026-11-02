@@ -37,7 +37,9 @@ const orderSchema = new mongoose.Schema(
       address: { type: String, required: true, trim: true },
     },
     items: { type: [orderItemSchema], required: true, validate: (v) => Array.isArray(v) && v.length > 0 },
-    // subtotal is the final amount charged, after any bulk-poster discount.
+    // subtotal is the final amount charged: posters after any deal, plus the
+    // delivery fee (itemsTotal + deliveryFee on orders placed since delivery
+    // options were added).
     // discountPercent/discountAmount record what that discount was (both 0
     // when the order didn't qualify) purely so emails and the admin orders
     // page can show it - see computeOrderTotals in data/categories.js, which
@@ -47,6 +49,16 @@ const orderSchema = new mongoose.Schema(
     discountAmount: { type: Number, default: 0 },
     // Saving from the pack deals (5 A4 for Rs 375, 5 A5 for Rs 225); 0 if unused.
     packDealAmount: { type: Number, default: 0 },
+    // Saving from Buy 2 Get 1 (cheapest of every 3 posters free); 0 if the
+    // other deals saved more. Only one kind of deal is ever applied.
+    b2g1Amount: { type: Number, default: 0 },
+    // Posters' total after the deal, before delivery.
+    itemsTotal: { type: Number },
+    // "standard" = free delivery across Tamil Nadu in 3-5 days; "instant" =
+    // within 59 minutes in Chennai, for deliveryFee. Left unset on orders
+    // placed before delivery options existed.
+    deliveryOption: { type: String, enum: ["standard", "instant"] },
+    deliveryFee: { type: Number, default: 0 },
     // No real payment gateway yet — every order lands here as "placed".
     // The field exists so a future payment integration has somewhere to
     // record status transitions without a schema change.

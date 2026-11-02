@@ -83,15 +83,30 @@ function normalizeItemPrices(items) {
   });
 }
 
-// items - the order's item array, each with `price` and `qty`. Returns the
-// raw (pre-discount) subtotal, whether this order qualifies, and the final
-// numbers to store on the Order (see models/Order.js's discountPercent/
-// discountAmount/packDealAmount/subtotal fields).
-function computeOrderTotals(rawItems) {
-  const items = normalizeItemPrices(rawItems);
-  const rawSubtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
-  const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
+// Buy 2 Get 1: in every group of 3 posters the cheapest one is free. The
+// order's posters are lined up from most to least expensive and every 3rd
+// one is free (the standard way shops run it). Returns the saving and how
+// many posters were free.
+const BUY2GET1 = { groupSize: 3 };
 
+function computeBuy2Get1(items) {
+  const units = [];
+  for (const item of items) {
+    for (let n = 0; n < item.qty; n += 1) units.push(item.price);
+  }
+  units.sort((a, b) => b - a);
+  let amount = 0;
+  let freeCount = 0;
+  for (let i = BUY2GET1.groupSize - 1; i < units.length; i += BUY2GET1.groupSize) {
+    amount += units[i];
+    freeCount += 1;
+  }
+  return { amount, freeCount };
+}
+
+// The older deals together: pack deals (5 A4 for Rs 375, 5 A5 for Rs 225)
+// plus the 3+ bundle discount on the other sizes.
+function computeComboDeals(items) {
   let packDealAmount = 0;
   for (const deal of PACK_DEALS) {
     const qty = items.filter((i) => i.size === deal.size).reduce((sum, i) => sum + i.qty, 0);
@@ -105,14 +120,73 @@ function computeOrderTotals(rawItems) {
   const otherSubtotal = otherItems.reduce((sum, item) => sum + item.price * item.qty, 0);
   const eligible = otherQty >= BULK_DISCOUNT.minQty;
   const discountAmount = eligible ? Math.round(otherSubtotal * (BULK_DISCOUNT.percent / 100)) : 0;
+  return {
+    discountPercent: eligible ? BULK_DISCOUNT.percent : 0,
+    discountAmount,
+    packDealAmount,
+    amount: discountAmount + packDealAmount,
+  };
+}
+
+// Two ways to get the posters home:
+//  - standard: free delivery anywhere in Tamil Nadu, 3-5 days
+//  - instant: within 59 minutes anywhere in Chennai. The fee depends on the
+//    posters' total after discounts - Rs 150 under Rs 200, Rs 100 from
+//    Rs 200 to Rs 300, free above Rs 300.
+// The frontend keeps a copy of these rules to show the fee before ordering.
+const DELIVERY_OPTIONS = {
+  standard: { slug: "standard", label: "Free delivery (3-5 days, all Tamil Nadu)" },
+  instant: { slug: "instant", label: "Instant delivery (59 min, Chennai)" },
+};
+
+function instantDeliveryFee(itemsTotal) {
+  if (itemsTotal > 300) return 0;
+  if (itemsTotal >= 200) return 100;
+  return 150;
+}
+
+function deliveryFeeFor(option, itemsTotal) {
+  return option === "instant" ? instantDeliveryFee(itemsTotal) : 0;
+}
+
+// items - the order's item array, each with `price` and `qty`. Works out
+// both kinds of deal - Buy 2 Get 1, and the pack deals + bundle discount
+// together - and gives the customer whichever saves more (never both).
+// Then adds the delivery fee for the chosen option. Returns the final
+// numbers to store on the Order (see models/Order.js); `subtotal` is the
+// amount actually charged, delivery included.
+function computeOrderTotals(rawItems, deliveryOption = "standard") {
+  const items = normalizeItemPrices(rawItems);
+  const rawSubtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
+
+  const combo = computeComboDeals(items);
+  const b2g1 = computeBuy2Get1(items);
+  const useB2g1 = b2g1.amount > combo.amount;
+  const dealType = useB2g1 ? "b2g1" : combo.amount > 0 ? "combo" : "";
+
+  const discountPercent = useB2g1 ? 0 : combo.discountPercent;
+  const discountAmount = useB2g1 ? 0 : combo.discountAmount;
+  const packDealAmount = useB2g1 ? 0 : combo.packDealAmount;
+  const b2g1Amount = useB2g1 ? b2g1.amount : 0;
+  const itemsTotal = rawSubtotal - discountAmount - packDealAmount - b2g1Amount;
+
+  const option = DELIVERY_OPTIONS[deliveryOption] ? deliveryOption : "standard";
+  const deliveryFee = deliveryFeeFor(option, itemsTotal);
 
   return {
     rawSubtotal,
     totalQty,
-    discountPercent: eligible ? BULK_DISCOUNT.percent : 0,
+    dealType,
+    discountPercent,
     discountAmount,
     packDealAmount,
-    subtotal: rawSubtotal - discountAmount - packDealAmount,
+    b2g1Amount,
+    b2g1FreeCount: useB2g1 ? b2g1.freeCount : 0,
+    itemsTotal,
+    deliveryOption: option,
+    deliveryFee,
+    subtotal: itemsTotal + deliveryFee,
   };
 }
 
@@ -126,6 +200,11 @@ module.exports = {
   getMinPixelsForSize,
   BULK_DISCOUNT,
   PACK_DEALS,
+  BUY2GET1,
+  DELIVERY_OPTIONS,
+  instantDeliveryFee,
+  deliveryFeeFor,
   normalizeItemPrices,
+  computeBuy2Get1,
   computeOrderTotals,
 };

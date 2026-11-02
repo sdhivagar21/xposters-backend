@@ -146,29 +146,44 @@ async function sendEmail(to, subject, html, text) {
   }
 }
 
-// Rendered right before the Total line whenever an order qualified for the
-// bulk-poster discount (order.discountAmount > 0) - blank otherwise, so a
-// non-discounted order's email looks exactly as it always has.
-function formatDiscountLineHtml(order) {
-  let html = "";
+// The lines between the items and the Total: whichever deal the order got
+// and the delivery choice. Older orders (no deliveryOption) show no delivery
+// line, so their emails look as they always have.
+function discountLines(order) {
+  const lines = [];
+  if (order.b2g1Amount) {
+    lines.push(`Buy 2 Get 1 (cheapest of every 3 free): -Rs ${order.b2g1Amount}`);
+  }
   if (order.discountAmount) {
-    html += `<p>Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}</p>`;
+    lines.push(`Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}`);
   }
   if (order.packDealAmount) {
-    html += `<p>Pack deal (5 A4 for Rs 375 / 5 A5 for Rs 225): -Rs ${order.packDealAmount}</p>`;
+    lines.push(`Pack deal (5 A4 for Rs 375 / 5 A5 for Rs 225): -Rs ${order.packDealAmount}`);
   }
-  return html;
+  if (order.deliveryOption === "instant") {
+    lines.push(`Instant delivery (59 min, Chennai): ${order.deliveryFee ? `Rs ${order.deliveryFee}` : "FREE"}`);
+  } else if (order.deliveryOption === "standard") {
+    lines.push("Free delivery in Tamil Nadu (3-5 days): FREE");
+  }
+  return lines;
+}
+
+function formatDiscountLineHtml(order) {
+  return discountLines(order)
+    .map((line) => `<p>${line}</p>`)
+    .join("");
 }
 
 function formatDiscountLineText(order) {
-  let text = "";
-  if (order.discountAmount) {
-    text += `Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}\n`;
-  }
-  if (order.packDealAmount) {
-    text += `Pack deal (5 A4 for Rs 375 / 5 A5 for Rs 225): -Rs ${order.packDealAmount}\n`;
-  }
-  return text;
+  return discountLines(order)
+    .map((line) => `${line}\n`)
+    .join("");
+}
+
+function deliveryNote(order) {
+  if (order.deliveryOption === "instant") return "It will reach you within 59 minutes once your payment is confirmed.";
+  if (order.deliveryOption === "standard") return "It will reach you in 3-5 days - we'll update you when it ships.";
+  return "We'll update you when it ships.";
 }
 
 async function sendOrderConfirmationToCustomer(order) {
@@ -179,7 +194,7 @@ async function sendOrderConfirmationToCustomer(order) {
     ${formatDiscountLineHtml(order)}
     <p><strong>Total: Rs ${order.subtotal}</strong></p>
     <p>Delivering to: ${order.customer.address}</p>
-    <p>We'll update you when it ships. Thanks for shopping with XPOSTERS!</p>
+    <p>${deliveryNote(order)} Thanks for shopping with XPOSTERS!</p>
   `;
   const text =
     `Hi ${order.customer.name}, your XPOSTERS order ${order.orderId} is confirmed!\n\n` +
@@ -187,7 +202,7 @@ async function sendOrderConfirmationToCustomer(order) {
     `${formatDiscountLineText(order)}` +
     `Total: Rs ${order.subtotal}\n\n` +
     `Delivering to: ${order.customer.address}\n\n` +
-    `We'll update you when it ships. Thanks for shopping with XPOSTERS!`;
+    `${deliveryNote(order)} Thanks for shopping with XPOSTERS!`;
 
   await sendEmail(order.customer.email, subject, html, text);
 }
@@ -198,9 +213,11 @@ async function sendNewOrderAlertToOwner(order) {
     console.warn("[email] Skipped owner alert - OWNER_EMAIL is not set.");
     return;
   }
-  const subject = `New order ${order.orderId} - Rs ${order.subtotal}`;
+  const instant = order.deliveryOption === "instant";
+  const subject = `${instant ? "INSTANT 59-MIN DELIVERY - " : ""}New order ${order.orderId} - Rs ${order.subtotal}`;
   const links = orderPrintLinks(order);
   const html = `
+    ${instant ? `<p style="background:#c9a24c;color:#0c0b09;padding:10px 14px;font-weight:bold">&#9889; INSTANT DELIVERY - deliver within 59 minutes (Chennai)</p>` : ""}
     <p><strong>New order ${order.orderId}!</strong></p>
     ${formatDownloadAllHtml(order, links)}
     ${formatItemsListHtml(order.items, links)}
@@ -212,6 +229,7 @@ async function sendNewOrderAlertToOwner(order) {
     Address: ${order.customer.address}</p>
   `;
   const text =
+    (instant ? "INSTANT DELIVERY - deliver within 59 minutes (Chennai)\n\n" : "") +
     `New order ${order.orderId}!\n\n` +
     (order.items.length > 1 ? `Download all print files (ZIP): ${links.all}\n\n` : "") +
     `${formatItemsListText(order.items, links)}\n\n` +
