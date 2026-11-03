@@ -152,7 +152,7 @@ async function sendEmail(to, subject, html, text) {
 function discountLines(order) {
   const lines = [];
   if (order.b2g1Amount) {
-    lines.push(`Buy 2 Get 1 (cheapest of every 3 free): -Rs ${order.b2g1Amount}`);
+    lines.push(`Buy 2 Get 1 (most affordable of every 3 free): -Rs ${order.b2g1Amount}`);
   }
   if (order.discountAmount) {
     lines.push(`Bundle discount (${order.discountPercent}% off, 3+ posters): -Rs ${order.discountAmount}`);

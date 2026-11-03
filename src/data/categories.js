@@ -83,7 +83,7 @@ function normalizeItemPrices(items) {
   });
 }
 
-// Buy 2 Get 1: in every group of 3 posters the cheapest one is free. The
+// Buy 2 Get 1: in every group of 3 posters the most affordable one is free. The
 // order's posters are lined up from most to least expensive and every 3rd
 // one is free (the standard way shops run it). Returns the saving and how
 // many posters were free.

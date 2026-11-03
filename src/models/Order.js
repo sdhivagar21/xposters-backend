@@ -49,7 +49,7 @@ const orderSchema = new mongoose.Schema(
     discountAmount: { type: Number, default: 0 },
     // Saving from the pack deals (5 A4 for Rs 375, 5 A5 for Rs 225); 0 if unused.
     packDealAmount: { type: Number, default: 0 },
-    // Saving from Buy 2 Get 1 (cheapest of every 3 posters free); 0 if the
+    // Saving from Buy 2 Get 1 (most affordable of every 3 posters free); 0 if the
     // other deals saved more. Only one kind of deal is ever applied.
     b2g1Amount: { type: Number, default: 0 },
     // Posters' total after the deal, before delivery.
